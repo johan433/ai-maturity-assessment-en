@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Individual Report — AI Maturity Assessment</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>AI Maturity — Individual Report</h1>
+    <p id="sessionLabel"></p>
+  </div>
+
+  <div class="container">
+
+    <div id="loadingDiv" class="loading"><div class="spinner"></div><p>Generating report...</p></div>
+
+    <div id="reportContent" class="hidden">
+
+      <!-- 1. Participant Header -->
+      <div class="report-header" id="reportHeader"></div>
+
+      <!-- 2. Maturity Level -->
+      <div class="card card-accent" id="maturitySection"></div>
+
+      <!-- 3. Overall Score + Peer Comparison -->
+      <div class="card card-blue" id="scoreSection"></div>
+
+      <!-- 4. Radar Chart: Individual vs Peer -->
+      <div class="card">
+        <div class="card-header">Dimension Overview</div>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
+          Your score (blue) compared to your peer group average (orange dashed).
+        </p>
+        <div class="report-radar">
+          <canvas id="radarChart"></canvas>
+        </div>
+      </div>
+
+      <!-- 5. Strengths -->
+      <div id="strengthsSection">
+        <h2 class="report-section-title" style="color:var(--success);">&#128170; Strengths</h2>
+        <p class="report-section-intro">Based on your responses, the following areas show particular strength:</p>
+        <div id="strengthCards"></div>
+      </div>
+
+      <!-- 6. Growth Areas -->
+      <div id="growthSection">
+        <h2 class="report-section-title" style="color:var(--orange);">&#127793; Growth Areas</h2>
+        <p class="report-section-intro">The following areas offer potential for further development:</p>
+        <div id="growthCards"></div>
+      </div>
+
+      <!-- 7. All Dimensions Table -->
+      <div class="card">
+        <div class="card-header">All Dimensions in Detail</div>
+        <table class="score-table" id="allDimensionsTable">
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th style="text-align:right;">Your Score</th>
+              <th style="text-align:right;">Avg. Peer</th>
+              <th style="text-align:right;">Difference</th>
+            </tr>
+          </thead>
+          <tbody id="allDimensionsBody"></tbody>
+        </table>
+      </div>
+
+      <!-- 8. Next Steps -->
+      <div class="card card-accent" id="nextStepsSection"></div>
+
+      <!-- 9. LLM Placeholder -->
+      <div class="card ai-placeholder" id="aiSection">
+        <div class="card-header">&#129302; AI-Powered Analysis</div>
+        <p style="color:var(--text-secondary);margin-bottom:12px;">
+          A personalised, AI-generated analysis of your results with specific recommendations for action.
+        </p>
+        <button class="btn btn-outline" disabled title="This feature will be available in a future version.">
+          Generate AI Analysis — Coming Soon
+        </button>
+      </div>
+
+      <!-- Action buttons -->
+      <div id="reportActions" style="text-align:center;margin:24px 0;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="downloadPDF()">&#128229; Download PDF</button>
+        <a class="btn btn-blue" id="backLink" href="results.html">&#8592; Back to Results</a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/report-templates.js"></script>
+  <script>
+    let sessionCode = '';
+    let respondentId = '';
+
+    (async function init() {
+      sessionCode = getUrlParam('session');
+      respondentId = getUrlParam('id');
+      if (!sessionCode || !respondentId) {
+        alert('Missing parameters.');
+        window.location.href = 'admin.html';
+        return;
+      }
+      sessionCode = sessionCode.toUpperCase();
+      document.getElementById('backLink').href = `results.html?session=${sessionCode}`;
+
+      try {
+        // Load session info
+        const sessionData = await getSession(sessionCode);
+        if (sessionData) {
+          document.getElementById('sessionLabel').textContent =
+            `${sessionData.organisation} — ${sessionData.name}`;
+        }
+
+        // Load the specific respondent
+        const docSnap = await db.collection(RESPONSES_COLLECTION).doc(respondentId).get();
+        if (!docSnap.exists) {
+          alert('Response not found.');
+          window.location.href = `results.html?session=${sessionCode}`;
+          return;
+        }
+        const response = { id: docSnap.id, ...docSnap.data() };
+
+        // Load all peer responses (same path, same session)
+        const allResponses = await getResponses(sessionCode);
+        const peerResponses = allResponses.filter(r => r.path === response.path);
+
+        // Generate report
+        const report = generateReport(response, peerResponses);
+
+        document.getElementById('loadingDiv').classList.add('hidden');
+        document.getElementById('reportContent').classList.remove('hidden');
+
+        renderReport(report);
+      } catch (err) {
+        document.getElementById('loadingDiv').innerHTML =
+          `<p style="color:var(--danger);">Error: ${err.message}</p>`;
+        console.error(err);
+      }
+    })();
+
+    /* ---- PDF Download ---- */
+    let reportData = null; // Store report data for filename
+
+    async function downloadPDF() {
+      const btn = document.querySelector('#reportActions button');
+      const originalText = btn.textContent;
+      btn.textContent = '⏳ Generating PDF...';
+      btn.disabled = true;
+
+      // Build filename from respondent name
+      const safeName = (reportData && reportData.respondentName)
+        ? reportData.respondentName.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_')
+        : 'Report';
+
+      // --- Temporarily modify the page for clean PDF capture ---
+      const siteHeader = document.querySelector('.header');
+      const actions = document.getElementById('reportActions');
+      const aiSection = document.getElementById('aiSection');
+      const reportContent = document.getElementById('reportContent');
+      const canvas = document.getElementById('radarChart');
+      const radarContainer = document.querySelector('.report-radar');
+
+      // 1) Hide site header, action buttons, AI section
+      siteHeader.style.display = 'none';
+      actions.style.display = 'none';
+      if (aiSection) aiSection.style.display = 'none';
+
+      // 2) Add a PDF header with logos at the top of reportContent
+      const sessionLabel = document.getElementById('sessionLabel').textContent || '';
+      const pdfHeader = document.createElement('div');
+      pdfHeader.id = 'pdfHeader';
+      pdfHeader.innerHTML = `
+        <div style="text-align:center;padding:24px 20px 16px;border-bottom:3px solid #104984;margin-bottom:20px;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:24px;margin-bottom:12px;">
+            <img src="img/praelexis-logo.png" style="height:50px;width:auto;">
+            <img src="img/clearit-logo.png" style="height:50px;width:auto;">
+          </div>
+          <div style="font-size:20px;font-weight:700;color:#104984;margin-bottom:4px;">AI Maturity — Individual Report</div>
+          <div style="font-size:12px;color:#666;">${sessionLabel}</div>
+        </div>
+      `;
+      reportContent.insertBefore(pdfHeader, reportContent.firstChild);
+
+      // 3) Add footer
+      const pdfFooter = document.createElement('div');
+      pdfFooter.id = 'pdfFooter';
+      pdfFooter.style.cssText = 'text-align:center;padding:8px;margin-top:8px;border-top:1px solid #ddd;font-size:11px;color:#999;';
+      pdfFooter.textContent = '\u00A9 Praelexis — AI Maturity Assessment';
+      reportContent.appendChild(pdfFooter);
+
+      // 4) Replace radar chart canvas with static image
+      const chartImg = document.createElement('img');
+      chartImg.id = 'pdfChartImg';
+      chartImg.src = canvas.toDataURL('image/png', 1.0);
+      chartImg.style.cssText = 'width:100%;max-width:480px;display:block;margin:0 auto;';
+      canvas.style.display = 'none';
+      radarContainer.appendChild(chartImg);
+
+      // 5) Scroll to top so capture starts at the right place
+      window.scrollTo(0, 0);
+      await new Promise(r => setTimeout(r, 200));
+
+      const opt = {
+        margin:       [8, 10, 8, 10],
+        filename:     `AI-Maturity_${safeName}.pdf`,
+        image:        { type: 'jpeg', quality: 0.95 },
+        html2canvas:  { scale: 2, useCORS: true, logging: false },
+        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'], avoid: ['.card', '.strength-card', '.growth-card', '.report-header', 'tr'] }
+      };
+
+      try {
+        await html2pdf().set(opt).from(reportContent).save();
+      } catch (err) {
+        console.error('PDF generation failed:', err);
+        alert('PDF generation failed. Please try again.');
+      }
+
+      // --- Restore the page ---
+      siteHeader.style.display = '';
+      actions.style.display = '';
+      if (aiSection) aiSection.style.display = '';
+      pdfHeader.remove();
+      pdfFooter.remove();
+      canvas.style.display = '';
+      chartImg.remove();
+
+      btn.textContent = originalText;
+      btn.disabled = false;
+    }
+
+    function renderReport(report) {
+      reportData = report; // Store for PDF filename
+      renderHeader(report);
+      renderMaturityLevel(report);
+      renderScoreSection(report);
+      renderRadarChart(report);
+      renderStrengths(report);
+      renderGrowthAreas(report);
+      renderAllDimensions(report);
+      renderNextSteps(report);
+    }
+
+    /* ---- 1. Header ---- */
+    function renderHeader(report) {
+      document.getElementById('reportHeader').innerHTML = `
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <div style="font-size:2.5rem;">${report.pathDescription.emoji}</div>
+          <div>
+            <h2 style="margin:0;font-size:1.4rem;">${report.respondentName}</h2>
+            <p style="margin:4px 0 0;color:var(--text-secondary);font-size:0.9rem;">
+              ${report.email || ''}
+              ${report.createdAt ? ' · ' + formatDate(report.createdAt) : ''}
+            </p>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ---- 2. Maturity Level ---- */
+    function renderMaturityLevel(report) {
+      const pd = report.pathDescription;
+      document.getElementById('maturitySection').innerHTML = `
+        <div class="card-header">Your Maturity Level</div>
+        <div style="text-align:center;margin:16px 0;">
+          <span class="maturity-badge ${report.path}" style="font-size:1.1rem;padding:10px 28px;">
+            ${pd.emoji} ${pd.title}
+          </span>
+        </div>
+        <p style="line-height:1.7;color:var(--text);margin:16px 0 8px;">${pd.description}</p>
+        <p style="font-size:0.9rem;color:var(--text-secondary);font-style:italic;">${pd.peerIntro}</p>
+      `;
+    }
+
+    /* ---- 3. Score + Peer Comparison ---- */
+    function renderScoreSection(report) {
+      const pct = (report.individualScore / 5) * 100;
+      const peerPct = (report.peerAvgScore / 5) * 100;
+      const diff = (report.individualScore - report.peerAvgScore).toFixed(2);
+      const diffSign = diff >= 0 ? '+' : '';
+      const diffColor = diff >= 0 ? 'var(--success)' : 'var(--orange)';
+
+      document.getElementById('scoreSection').innerHTML = `
+        <div class="card-header">Overall Score</div>
+        <div class="peer-comparison">
+          <div class="peer-row">
+            <span class="peer-label">Your Score</span>
+            <div class="gauge-container">
+              <div class="gauge-fill" style="width:${pct}%;background:var(--blue);"></div>
+            </div>
+            <span class="peer-value" style="color:var(--blue);font-weight:700;">${report.individualScore}</span>
+          </div>
+          <div class="peer-row">
+            <span class="peer-label">Avg. ${report.pathDescription.title} (${report.peerCount})</span>
+            <div class="gauge-container">
+              <div class="gauge-fill" style="width:${peerPct}%;background:var(--orange);opacity:0.7;"></div>
+            </div>
+            <span class="peer-value">${report.peerAvgScore}</span>
+          </div>
+          <div style="text-align:right;font-size:0.85rem;margin-top:8px;">
+            Difference: <strong style="color:${diffColor};">${diffSign}${diff}</strong>
+          </div>
+        </div>
+      `;
+    }
+
+    /* ---- 4. Radar Chart ---- */
+    function renderRadarChart(report) {
+      const labels = report.dimensions.map(d => d.label);
+      const individualData = report.dimensions.map(d => d.score);
+      const peerData = report.dimensions.map(d => d.peerAvg);
+
+      const ctx = document.getElementById('radarChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Your Score',
+              data: individualData,
+              backgroundColor: 'rgba(16, 73, 132, 0.15)',
+              borderColor: '#104984',
+              borderWidth: 2,
+              pointBackgroundColor: '#104984',
+              pointBorderColor: '#fff',
+              pointRadius: 5
+            },
+            {
+              label: 'Avg. Peer Group',
+              data: peerData,
+              backgroundColor: 'rgba(206, 89, 40, 0.08)',
+              borderColor: '#ce5928',
+              borderWidth: 2,
+              borderDash: [6, 4],
+              pointBackgroundColor: '#ce5928',
+              pointBorderColor: '#fff',
+              pointRadius: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            r: {
+              min: 0, max: 5,
+              ticks: { stepSize: 1, display: true, font: { size: 10 } },
+              grid: { color: 'rgba(0,0,0,0.08)' },
+              pointLabels: { font: { size: 11 } }
+            }
+          },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: { font: { size: 12 }, usePointStyle: true, padding: 16 }
+            }
+          }
+        }
+      });
+    }
+
+    /* ---- 5. Strengths ---- */
+    function renderStrengths(report) {
+      document.getElementById('strengthCards').innerHTML = report.strengths.map(dim => `
+        <div class="strength-card">
+          <div class="dimension-card-header">
+            <span class="dimension-label">${dim.label}</span>
+            <span class="dimension-score" style="color:var(--success);">${dim.score} / 5</span>
+          </div>
+          <div class="gauge-container" style="margin:8px 0;">
+            <div class="gauge-fill" style="width:${(dim.score/5)*100}%;background:var(--success);"></div>
+          </div>
+          <p class="dimension-interp">${dim.interpretation}</p>
+          ${dim.delta !== 0 ? `<p class="dimension-peer">
+            Peer comparison: <strong style="color:${dim.delta >= 0 ? 'var(--success)' : 'var(--orange)'};">
+              ${dim.delta >= 0 ? '+' : ''}${dim.delta}</strong> vs. Avg. ${dim.peerAvg}
+          </p>` : ''}
+        </div>
+      `).join('');
+    }
+
+    /* ---- 6. Growth Areas ---- */
+    function renderGrowthAreas(report) {
+      document.getElementById('growthCards').innerHTML = report.growthAreas.map(dim => `
+        <div class="growth-card">
+          <div class="dimension-card-header">
+            <span class="dimension-label">${dim.label}</span>
+            <span class="dimension-score" style="color:var(--orange);">${dim.score} / 5</span>
+          </div>
+          <div class="gauge-container" style="margin:8px 0;">
+            <div class="gauge-fill" style="width:${(dim.score/5)*100}%;background:var(--orange);"></div>
+          </div>
+          <p class="dimension-interp">${dim.interpretation}</p>
+          ${dim.delta !== 0 ? `<p class="dimension-peer">
+            Peer comparison: <strong style="color:${dim.delta >= 0 ? 'var(--success)' : 'var(--orange)'};">
+              ${dim.delta >= 0 ? '+' : ''}${dim.delta}</strong> vs. Avg. ${dim.peerAvg}
+          </p>` : ''}
+        </div>
+      `).join('');
+    }
+
+    /* ---- 7. All Dimensions ---- */
+    function renderAllDimensions(report) {
+      document.getElementById('allDimensionsBody').innerHTML = report.dimensions.map(dim => {
+        const diffSign = dim.delta >= 0 ? '+' : '';
+        const diffColor = dim.delta >= 0 ? 'var(--success)' : 'var(--orange)';
+        return `<tr>
+          <td>
+            <div>${dim.label}</div>
+            <div class="gauge-container" style="margin-top:4px;height:6px;">
+              <div class="gauge-fill" style="width:${(dim.score/5)*100}%;background:var(--blue);height:6px;"></div>
+            </div>
+          </td>
+          <td style="text-align:right;font-weight:600;color:var(--blue);">${dim.score}</td>
+          <td style="text-align:right;">${dim.peerAvg}</td>
+          <td style="text-align:right;font-weight:600;color:${diffColor};">${diffSign}${dim.delta}</td>
+        </tr>`;
+      }).join('');
+    }
+
+    /* ---- 8. Next Steps ---- */
+    function renderNextSteps(report) {
+      const pd = report.pathDescription;
+      document.getElementById('nextStepsSection').innerHTML = `
+        <div class="card-header">Recommended Next Steps</div>
+        <ol class="next-steps-list">
+          ${pd.nextSteps.map(step => `<li>${step}</li>`).join('')}
+        </ol>
+      `;
+    }
+  </script>
+</body>
+</html>

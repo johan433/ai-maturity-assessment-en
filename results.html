@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Results — AI Maturity Assessment</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>AI Maturity — Results</h1>
+    <p id="sessionLabel"></p>
+  </div>
+
+  <div class="container-wide">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+
+    <div id="loadingDiv" class="loading"><div class="spinner"></div><p>Loading results...</p></div>
+
+    <div id="resultsContent" class="hidden">
+
+      <!-- Summary Cards -->
+      <div id="summaryCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:24px;"></div>
+
+      <!-- Maturity Level Distribution -->
+      <div class="card card-accent">
+        <div class="card-header">Maturity Level Distribution</div>
+        <div id="maturityDistribution" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;"></div>
+        <div class="respondent-list" id="respondentList"></div>
+      </div>
+
+      <!-- Filter by Path -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:20px 0;" id="pathFilter"></div>
+
+      <!-- Filtered results -->
+      <div id="filteredResults">
+
+        <!-- Radar Chart -->
+        <div class="card card-blue">
+          <div class="card-header">Dimension Overview</div>
+          <div class="chart-container">
+            <canvas id="radarChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Score Table -->
+        <div class="card">
+          <div class="card-header">Detailed Scores</div>
+          <table class="score-table" id="scoreTable">
+            <thead><tr><th>Dimension</th><th>Average</th><th>Min</th><th>Max</th></tr></thead>
+            <tbody id="scoreBody"></tbody>
+          </table>
+        </div>
+
+        <!-- Multi-select summaries -->
+        <div id="multiSelectSection"></div>
+
+        <!-- Individual Responses -->
+        <div class="card">
+          <div class="card-header">Individual Responses</div>
+          <div id="individualResponses"></div>
+        </div>
+
+      </div>
+
+      <!-- Export -->
+      <div style="text-align:center;margin:24px 0;">
+        <button class="btn btn-blue" onclick="doExport()">&#128229; Export CSV</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    let sessionCode = '';
+    let sessionData = null;
+    let allResponses = [];
+    let currentPathFilter = 'all';
+    let radarChartInstance = null;
+
+    (async function init() {
+      sessionCode = getUrlParam('session');
+      if (!sessionCode) { alert('No session code.'); window.location.href = 'admin.html'; return; }
+      sessionCode = sessionCode.toUpperCase();
+
+      try {
+        sessionData = await getSession(sessionCode);
+        if (!sessionData) { alert('Session not found.'); window.location.href = 'admin.html'; return; }
+        document.getElementById('sessionLabel').textContent = `${sessionData.organisation} — ${sessionData.name}`;
+
+        allResponses = await getResponses(sessionCode);
+        document.getElementById('loadingDiv').classList.add('hidden');
+        document.getElementById('resultsContent').classList.remove('hidden');
+
+        if (allResponses.length === 0) {
+          document.getElementById('resultsContent').innerHTML =
+            '<div class="card text-center"><p style="color:var(--text-secondary);">No responses received yet.</p></div>';
+          return;
+        }
+
+        renderResults();
+      } catch (err) {
+        document.getElementById('loadingDiv').innerHTML =
+          `<p style="color:var(--danger);">Error: ${err.message}</p>`;
+      }
+    })();
+
+    function renderResults() {
+      renderSummaryCards();
+      renderMaturityDistribution();
+      renderPathFilter();
+      renderFilteredResults();
+    }
+
+    /* ---- Summary Cards ---- */
+    function renderSummaryCards() {
+      const totalRespondents = allResponses.length;
+      const avgScore = (allResponses.reduce((s, r) => s + (r.maturityScore || 0), 0) / totalRespondents).toFixed(2);
+      const pathCounts = { novice: 0, intermediate: 0, expert: 0 };
+      allResponses.forEach(r => { if (pathCounts[r.path] !== undefined) pathCounts[r.path]++; });
+
+      document.getElementById('summaryCards').innerHTML = `
+        <div class="score-card">
+          <div class="score-value">${totalRespondents}</div>
+          <div class="score-label">Participants</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value">${avgScore}</div>
+          <div class="score-label">Avg. Overall Score</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value" style="color:var(--orange);">${pathCounts.novice}</div>
+          <div class="score-label">&#127793; Novice</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value" style="color:var(--blue);">${pathCounts.intermediate}</div>
+          <div class="score-label">&#128992; Intermediate</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value" style="color:var(--success);">${pathCounts.expert}</div>
+          <div class="score-label">&#128994; Expert</div>
+        </div>
+      `;
+    }
+
+    /* ---- Maturity Distribution ---- */
+    function renderMaturityDistribution() {
+      const groups = { novice: [], intermediate: [], expert: [] };
+      allResponses.forEach(r => { if (groups[r.path]) groups[r.path].push(r); });
+
+      const distDiv = document.getElementById('maturityDistribution');
+      distDiv.innerHTML = Object.entries(groups).filter(([, rs]) => rs.length > 0).map(([path, rs]) => {
+        const label = getPathLabel(path);
+        const emoji = getPathEmoji(path);
+        const badgeClass = path;
+        return `<span class="maturity-badge ${badgeClass}">${emoji} ${label} (${rs.length})</span>`;
+      }).join('');
+
+      document.getElementById('respondentList').innerHTML = allResponses.map(r => {
+        const emoji = getPathEmoji(r.path);
+        return `<span class="respondent-tag">${emoji} ${r.respondentName}</span>`;
+      }).join('');
+    }
+
+    /* ---- Path Filter ---- */
+    function renderPathFilter() {
+      const paths = [...new Set(allResponses.map(r => r.path))];
+      if (paths.length <= 1) {
+        document.getElementById('pathFilter').innerHTML = '';
+        currentPathFilter = paths[0] || 'all';
+        return;
+      }
+
+      const buttons = [`<button class="btn ${currentPathFilter === 'all' ? 'btn-blue' : 'btn-outline'}" onclick="filterPath('all')">All</button>`];
+      paths.forEach(p => {
+        const label = `${getPathEmoji(p)} ${getPathLabel(p)}`;
+        buttons.push(`<button class="btn ${currentPathFilter === p ? 'btn-blue' : 'btn-outline'}" onclick="filterPath('${p}')">${label}</button>`);
+      });
+      document.getElementById('pathFilter').innerHTML = buttons.join('');
+    }
+
+    function filterPath(path) {
+      currentPathFilter = path;
+      renderPathFilter();
+      renderFilteredResults();
+    }
+
+    /* ---- Filtered Results ---- */
+    function renderFilteredResults() {
+      const filtered = currentPathFilter === 'all'
+        ? allResponses
+        : allResponses.filter(r => r.path === currentPathFilter);
+
+      if (filtered.length === 0) {
+        document.getElementById('filteredResults').innerHTML =
+          '<div class="card text-center"><p style="color:var(--text-secondary);">No responses for this filter.</p></div>';
+        return;
+      }
+
+      const pathForDimensions = currentPathFilter !== 'all' ? currentPathFilter : filtered[0].path;
+      const questions = getQuestionsForPath(pathForDimensions);
+
+      renderRadarChart(filtered, pathForDimensions);
+      renderScoreTable(filtered, pathForDimensions);
+      renderMultiSelectSummaries(filtered, pathForDimensions);
+      renderIndividualResponses(filtered);
+    }
+
+    /* ---- Radar Chart ---- */
+    function renderRadarChart(responses, path) {
+      const sampleDimensions = getDimensionScores(responses[0].answers, path);
+      if (sampleDimensions.length === 0) return;
+
+      const labels = sampleDimensions.map(d => d.label);
+
+      const avgValues = sampleDimensions.map((dim, i) => {
+        const vals = responses.map(r => {
+          const dims = getDimensionScores(r.answers, r.path);
+          const match = dims[i];
+          return match ? (match.score / match.max) * 5 : 0;
+        });
+        return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+      });
+
+      if (radarChartInstance) radarChartInstance.destroy();
+
+      const ctx = document.getElementById('radarChart').getContext('2d');
+      radarChartInstance = new Chart(ctx, {
+        type: 'radar',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Avg. Score',
+            data: avgValues,
+            backgroundColor: 'rgba(16, 73, 132, 0.15)',
+            borderColor: '#104984',
+            borderWidth: 2,
+            pointBackgroundColor: '#ce5928',
+            pointBorderColor: '#fff',
+            pointRadius: 5
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            r: {
+              min: 0, max: 5,
+              ticks: { stepSize: 1, display: true },
+              grid: { color: 'rgba(0,0,0,0.08)' },
+              pointLabels: { font: { size: 11 } }
+            }
+          },
+          plugins: {
+            legend: { display: false }
+          }
+        }
+      });
+    }
+
+    /* ---- Score Table ---- */
+    function renderScoreTable(responses, path) {
+      const sampleDimensions = getDimensionScores(responses[0].answers, path);
+      if (sampleDimensions.length === 0) {
+        document.getElementById('scoreBody').innerHTML = '<tr><td colspan="4">No scoring data.</td></tr>';
+        return;
+      }
+
+      const rows = sampleDimensions.map((dim, i) => {
+        const vals = responses.map(r => {
+          const dims = getDimensionScores(r.answers, r.path);
+          const match = dims[i];
+          return match ? (match.score / match.max) * 5 : 0;
+        });
+        const avg = (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2);
+        const min = Math.min(...vals).toFixed(1);
+        const max = Math.max(...vals).toFixed(1);
+        return `<tr>
+          <td>${dim.label}</td>
+          <td style="text-align:right;font-weight:600;color:var(--blue);">${avg}</td>
+          <td style="text-align:right;">${min}</td>
+          <td style="text-align:right;">${max}</td>
+        </tr>`;
+      });
+
+      document.getElementById('scoreBody').innerHTML = rows.join('');
+    }
+
+    /* ---- Multi-Select Summaries ---- */
+    function renderMultiSelectSummaries(responses, path) {
+      const questions = getQuestionsForPath(path);
+      const container = document.getElementById('multiSelectSection');
+      let html = '';
+
+      function renderMultiQ(q) {
+        if (q.type !== 'multi') return;
+        const counts = {};
+        q.options.forEach(o => counts[o.value] = 0);
+        responses.forEach(r => {
+          const ans = r.answers[q.id];
+          if (Array.isArray(ans)) ans.forEach(v => { if (counts[v] !== undefined) counts[v]++; });
+        });
+
+        const total = responses.length;
+        const tags = q.options
+          .filter(o => counts[o.value] > 0)
+          .sort((a, b) => counts[b.value] - counts[a.value])
+          .map(o => `<span class="multi-tag"><span class="multi-count">${counts[o.value]}x</span>${o.label}</span>`)
+          .join('');
+
+        if (tags) {
+          html += `<div class="card">
+            <div class="card-header">${q.section}: ${q.text.substring(0, 60)}${q.text.length > 60 ? '...' : ''}</div>
+            <div class="multi-summary">${tags}</div>
+            <p style="font-size:0.75rem;color:var(--text-secondary);margin-top:8px;">${total} Participants</p>
+          </div>`;
+        }
+      }
+
+      questions.forEach(q => {
+        if (q.type === 'compound' && q.subQuestions) {
+          q.subQuestions.forEach(sq => renderMultiQ(sq));
+        } else {
+          renderMultiQ(q);
+        }
+      });
+
+      container.innerHTML = html;
+    }
+
+    /* ---- Individual Responses ---- */
+    function renderIndividualResponses(responses) {
+      const container = document.getElementById('individualResponses');
+      container.innerHTML = responses.map(r => {
+        const emoji = getPathEmoji(r.path);
+        const label = getPathLabel(r.path);
+        const badgeClass = r.path;
+        return `<div class="session-row" style="margin-bottom:8px;">
+          <div class="session-info">
+            <div class="session-name">${r.respondentName}</div>
+            <div class="session-org">${r.email || ''}</div>
+            <div class="session-meta">
+              <span class="maturity-badge ${badgeClass}" style="font-size:0.7rem;padding:3px 10px;">${emoji} ${label}</span>
+              Score: <strong>${r.maturityScore || '–'}</strong>
+              · ${r.createdAt ? formatDate(r.createdAt) : ''}
+            </div>
+          </div>
+          <div class="session-actions">
+            <a class="btn btn-outline btn-sm" href="report.html?session=${sessionCode}&id=${r.id}">&#128196; Report</a>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    /* ---- Export ---- */
+    function doExport() {
+      const name = sessionData ? `${sessionData.organisation}_${sessionData.name}` : sessionCode;
+      exportMaturityCSV(name, allResponses);
+    }
+  </script>
+</body>
+</html>

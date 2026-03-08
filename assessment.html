@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Maturity Assessment</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>AI Maturity Assessment</h1>
+    <p id="sessionLabel"></p>
+  </div>
+
+  <div class="container">
+
+    <!-- Step 1: Participant info -->
+    <div id="step-info">
+      <div class="card card-accent">
+        <div class="card-header">Participant Information</div>
+        <div class="form-group">
+          <label for="respondentName">Name *</label>
+          <input type="text" id="respondentName" placeholder="Your full name">
+        </div>
+        <div class="form-group">
+          <label for="respondentEmail">Email (optional)</label>
+          <input type="email" id="respondentEmail" placeholder="Your email address">
+        </div>
+        <div id="infoError" class="message message-error"></div>
+        <button class="btn btn-primary btn-full" onclick="startAssessment()">Start Assessment</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Routing Question (Q1) -->
+    <div id="step-routing" class="hidden">
+      <div class="routing-card">
+        <div class="question-section">Current AI Usage</div>
+        <div class="question-text" style="font-size:1.1rem;font-weight:600;margin-bottom:20px;">
+          Has your organisation already implemented AI?
+        </div>
+        <div id="routing-options"></div>
+        <div id="routingError" class="message message-error mt-16"></div>
+        <button class="btn btn-primary btn-full mt-24" onclick="submitRouting()">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Path-specific questions -->
+    <div id="step-questions" class="hidden">
+      <div class="progress-text" id="progressText"></div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div id="questionsContainer"></div>
+      <div id="submitError" class="message message-error mt-16"></div>
+      <div style="display:flex;gap:12px;margin-top:24px;">
+        <button class="btn btn-outline" onclick="goBackToRouting()">Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="submitAssessment()">Complete Assessment</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Completion -->
+    <div id="step-complete" class="hidden">
+      <div class="completion">
+        <div class="checkmark">&#10004;&#65039;</div>
+        <h2>Thank You!</h2>
+        <p style="color:var(--text-secondary);margin-bottom:8px;">Your assessment has been successfully submitted.</p>
+        <div id="completionBadge" style="margin:24px 0;"></div>
+        <div id="completionScore" style="margin-bottom:24px;"></div>
+        <div id="completionReport" style="margin-bottom:16px;"></div>
+        <a href="index.html" class="btn btn-outline">Back to Home</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    /* ---- State ---- */
+    let sessionCode = '';
+    let sessionData = null;
+    let selectedPath = '';
+    let answers = {};
+
+    /* ---- Init ---- */
+    (async function init() {
+      sessionCode = getUrlParam('session');
+      if (!sessionCode) { window.location.href = 'index.html'; return; }
+      sessionCode = sessionCode.toUpperCase();
+
+      try {
+        sessionData = await getSession(sessionCode);
+        if (!sessionData) { alert('Session not found.'); window.location.href = 'index.html'; return; }
+        document.getElementById('sessionLabel').textContent = `${sessionData.organisation} — ${sessionData.name}`;
+      } catch (err) {
+        alert('Error: ' + err.message);
+        window.location.href = 'index.html';
+      }
+    })();
+
+    /* ---- Step 1: Info ---- */
+    function startAssessment() {
+      const name = document.getElementById('respondentName').value.trim();
+      if (!name) {
+        const e = document.getElementById('infoError');
+        e.textContent = 'Please enter your name.';
+        e.style.display = 'block';
+        return;
+      }
+      document.getElementById('step-info').classList.add('hidden');
+      document.getElementById('step-routing').classList.remove('hidden');
+      renderRoutingQuestion();
+    }
+
+    /* ---- Step 2: Routing ---- */
+    function renderRoutingQuestion() {
+      const container = document.getElementById('routing-options');
+      container.innerHTML = ROUTING_QUESTION.options.map((opt, i) => `
+        <div class="routing-option" onclick="selectRouting('${opt.value}', this)">
+          <input type="radio" name="routing" value="${opt.value}" style="pointer-events:none;">
+          <label>${opt.label}</label>
+        </div>
+      `).join('');
+    }
+
+    function selectRouting(value, el) {
+      selectedPath = value;
+      document.querySelectorAll('.routing-option').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+      el.querySelector('input').checked = true;
+    }
+
+    function submitRouting() {
+      if (!selectedPath) {
+        const e = document.getElementById('routingError');
+        e.textContent = 'Please select an option.';
+        e.style.display = 'block';
+        return;
+      }
+      answers = { q1: selectedPath };
+      document.getElementById('step-routing').classList.add('hidden');
+      document.getElementById('step-questions').classList.remove('hidden');
+      renderQuestions();
+    }
+
+    function goBackToRouting() {
+      document.getElementById('step-questions').classList.add('hidden');
+      document.getElementById('step-routing').classList.remove('hidden');
+    }
+
+    /* ---- Step 3: Render Questions ---- */
+    function renderQuestions() {
+      const questions = getQuestionsForPath(selectedPath);
+      const container = document.getElementById('questionsContainer');
+      let currentSection = '';
+      let html = '';
+
+      questions.forEach((q, idx) => {
+        // Section header
+        if (q.section && q.section !== currentSection) {
+          currentSection = q.section;
+          html += `<div class="section-header${idx === 0 ? '' : ''}">
+            <h3>${currentSection}</h3>
+          </div>`;
+        }
+        html += renderQuestion(q, idx + 1);
+      });
+
+      container.innerHTML = html;
+      updateProgress();
+    }
+
+    function renderQuestion(q, num) {
+      let inner = '';
+      if (q.type === 'compound') {
+        inner = q.subQuestions.map(sq => renderSubQuestion(sq)).join('');
+      } else if (q.type === 'single') {
+        inner = renderSingleSelect(q);
+      } else if (q.type === 'multi') {
+        inner = renderMultiSelect(q);
+      } else if (q.type === 'stars') {
+        inner = renderStarRating(q);
+      }
+
+      return `<div class="question-card" id="card_${q.id}">
+        <div class="question-number">Question ${num}</div>
+        ${q.type === 'compound' ? '' : `<div class="question-text">${q.text}</div>`}
+        ${inner}
+      </div>`;
+    }
+
+    function renderSubQuestion(sq) {
+      let inner = '';
+      if (sq.type === 'stars') inner = renderStarRating(sq);
+      else if (sq.type === 'single') inner = renderSingleSelect(sq);
+      else if (sq.type === 'multi') inner = renderMultiSelect(sq);
+
+      return `<div style="margin-bottom:18px;">
+        <div class="question-text">${sq.text}</div>
+        ${inner}
+      </div>`;
+    }
+
+    function renderSingleSelect(q) {
+      return `<div class="option-group">
+        ${q.options.map((opt, i) => `
+          <div class="option-item" onclick="selectSingle('${q.id}', '${opt.value}', this)">
+            <input type="radio" name="${q.id}" value="${opt.value}" style="pointer-events:none;">
+            <label>${opt.label}</label>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    function renderMultiSelect(q) {
+      return `<div class="option-group">
+        ${q.options.map((opt, i) => `
+          <div class="option-item" onclick="toggleMulti('${q.id}', '${opt.value}', this, event)">
+            <input type="checkbox" value="${opt.value}" style="pointer-events:none;">
+            <label>
+              ${opt.label}
+              ${opt.hasTextInput ? `<input type="text" class="other-input" id="${q.id}_other_text"
+                placeholder="Please specify..." onclick="event.stopPropagation()"
+                oninput="updateOtherText('${q.id}')">` : ''}
+            </label>
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    function renderStarRating(q) {
+      const stars = [];
+      for (let i = 1; i <= (q.maxStars || 5); i++) {
+        stars.push(`<span class="star" data-q="${q.id}" data-val="${i}" onclick="selectStars('${q.id}', ${i})">&#9733;</span>`);
+      }
+      return `<div class="star-rating" id="stars_${q.id}">
+        ${stars.join('')}
+        <span class="star-label" id="starLabel_${q.id}"></span>
+      </div>`;
+    }
+
+    /* ---- Interaction Handlers ---- */
+    function selectSingle(qId, value, el) {
+      answers[qId] = value;
+      el.closest('.option-group').querySelectorAll('.option-item').forEach(o => o.classList.remove('selected'));
+      el.classList.add('selected');
+      el.querySelector('input').checked = true;
+      markAnswered(qId);
+      updateProgress();
+    }
+
+    function toggleMulti(qId, value, el, event) {
+      if (event.target.tagName === 'INPUT' && event.target.type === 'text') return;
+      if (!answers[qId]) answers[qId] = [];
+      const cb = el.querySelector('input[type="checkbox"]');
+      cb.checked = !cb.checked;
+      if (cb.checked) {
+        if (!answers[qId].includes(value)) answers[qId].push(value);
+        el.classList.add('selected');
+      } else {
+        answers[qId] = answers[qId].filter(v => v !== value);
+        el.classList.remove('selected');
+      }
+      markAnswered(qId);
+      updateProgress();
+    }
+
+    function updateOtherText(qId) {
+      const input = document.getElementById(`${qId}_other_text`);
+      if (input) {
+        answers[`${qId}_other`] = input.value;
+      }
+    }
+
+    function selectStars(qId, val) {
+      answers[qId] = val;
+      const container = document.getElementById(`stars_${qId}`);
+      container.querySelectorAll('.star').forEach(s => {
+        s.classList.toggle('active', parseInt(s.dataset.val) <= val);
+      });
+      const labels = ['Very Low', 'Low', 'Medium', 'High', 'Very High'];
+      document.getElementById(`starLabel_${qId}`).textContent = labels[val - 1] || '';
+      markAnswered(qId);
+      updateProgress();
+    }
+
+    function markAnswered(qId) {
+      const questions = getQuestionsForPath(selectedPath);
+      questions.forEach(q => {
+        if (q.type === 'compound' && q.subQuestions) {
+          const isSubQ = q.subQuestions.some(sq => sq.id === qId);
+          if (isSubQ) {
+            const allAnswered = q.subQuestions.every(sq => {
+              if (sq.type === 'multi') return answers[sq.id] && answers[sq.id].length > 0;
+              return answers[sq.id] !== undefined && answers[sq.id] !== '';
+            });
+            const card = document.getElementById(`card_${q.id}`);
+            if (card) card.classList.toggle('answered', allAnswered);
+          }
+        } else if (q.id === qId) {
+          const card = document.getElementById(`card_${q.id}`);
+          if (!card) return;
+          if (q.type === 'multi') {
+            card.classList.toggle('answered', answers[qId] && answers[qId].length > 0);
+          } else {
+            card.classList.toggle('answered', answers[qId] !== undefined && answers[qId] !== '');
+          }
+        }
+      });
+    }
+
+    /* ---- Progress ---- */
+    function updateProgress() {
+      const questions = getQuestionsForPath(selectedPath);
+      let total = 0, answered = 0;
+
+      questions.forEach(q => {
+        if (q.type === 'compound' && q.subQuestions) {
+          q.subQuestions.forEach(sq => {
+            total++;
+            if (sq.type === 'multi') {
+              if (answers[sq.id] && answers[sq.id].length > 0) answered++;
+            } else {
+              if (answers[sq.id] !== undefined && answers[sq.id] !== '') answered++;
+            }
+          });
+        } else {
+          total++;
+          if (q.type === 'multi') {
+            if (answers[q.id] && answers[q.id].length > 0) answered++;
+          } else {
+            if (answers[q.id] !== undefined && answers[q.id] !== '') answered++;
+          }
+        }
+      });
+
+      const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressText').textContent = `${answered} of ${total} questions answered (${pct}%)`;
+    }
+
+    /* ---- Submit ---- */
+    async function submitAssessment() {
+      const questions = getQuestionsForPath(selectedPath);
+      const unanswered = [];
+
+      questions.forEach((q, idx) => {
+        if (q.type === 'compound' && q.subQuestions) {
+          q.subQuestions.forEach(sq => {
+            if (sq.type === 'multi') {
+              if (!answers[sq.id] || answers[sq.id].length === 0) unanswered.push(q);
+            } else {
+              if (answers[sq.id] === undefined || answers[sq.id] === '') unanswered.push(q);
+            }
+          });
+        } else if (q.type === 'multi') {
+          if (!answers[q.id] || answers[q.id].length === 0) unanswered.push(q);
+        } else {
+          if (answers[q.id] === undefined || answers[q.id] === '') unanswered.push(q);
+        }
+      });
+
+      if (unanswered.length > 0) {
+        unanswered.forEach(q => {
+          const card = document.getElementById(`card_${q.id}`);
+          if (card) card.classList.add('unanswered-highlight');
+        });
+        const e = document.getElementById('submitError');
+        e.textContent = `Please answer all questions. ${unanswered.length} answer(s) remaining.`;
+        e.style.display = 'block';
+        const first = document.getElementById(`card_${unanswered[0].id}`);
+        if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+
+      const name = document.getElementById('respondentName').value.trim();
+      const email = document.getElementById('respondentEmail').value.trim();
+
+      try {
+        const docId = await submitResponse(sessionCode, name, email, selectedPath, answers);
+        showCompletion(docId);
+      } catch (err) {
+        const e = document.getElementById('submitError');
+        e.textContent = 'Error submitting: ' + err.message;
+        e.style.display = 'block';
+      }
+    }
+
+    function showCompletion(docId) {
+      document.getElementById('step-questions').classList.add('hidden');
+      document.getElementById('step-complete').classList.remove('hidden');
+
+      const pathLabel = getPathLabel(selectedPath);
+      const pathEmoji = getPathEmoji(selectedPath);
+      const badgeClass = selectedPath;
+      document.getElementById('completionBadge').innerHTML =
+        `<span class="maturity-badge ${badgeClass}">${pathEmoji} ${pathLabel}</span>`;
+
+      const score = calculateMaturityScore(answers, selectedPath);
+      document.getElementById('completionScore').innerHTML =
+        `<div class="score-card" style="display:inline-block;min-width:160px;">
+          <div class="score-value">${score}</div>
+          <div class="score-label">Overall Score (1–5)</div>
+        </div>`;
+
+      if (docId) {
+        document.getElementById('completionReport').innerHTML =
+          `<a class="btn btn-blue" href="report.html?session=${sessionCode}&id=${docId}">&#128196; View Individual Report</a>`;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Maturity Assessment — Praelexis</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>AI Maturity Assessment</h1>
+    <p>Determine your organisation's AI maturity level</p>
+  </div>
+
+  <div class="container">
+    <nav class="nav">
+      <a href="index.html" class="active">Home</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+
+    <!-- Enter Session Code -->
+    <div class="card card-accent">
+      <div class="card-header">Start Assessment</div>
+      <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
+        Enter the session code provided by your administrator.
+      </p>
+      <div class="form-group">
+        <label for="sessionCode">Session Code</label>
+        <input type="text" id="sessionCode" placeholder="e.g. ABC123" maxlength="6"
+               style="text-transform:uppercase;letter-spacing:2px;font-size:1.2rem;text-align:center;">
+      </div>
+      <div id="sessionError" class="message message-error"></div>
+      <div id="sessionInfo" class="message message-info"></div>
+      <button class="btn btn-primary btn-full" onclick="joinSession()">Join</button>
+    </div>
+
+    <div style="text-align:center;margin-top:40px;padding:20px;color:var(--text-secondary);font-size:0.8rem;">
+      &copy; Praelexis &mdash; AI Maturity Assessment
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    const codeInput = document.getElementById('sessionCode');
+    const errorDiv = document.getElementById('sessionError');
+    const infoDiv = document.getElementById('sessionInfo');
+
+    // Allow Enter key
+    codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinSession(); });
+
+    // Auto-uppercase
+    codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase(); });
+
+    async function joinSession() {
+      const code = codeInput.value.trim().toUpperCase();
+      errorDiv.style.display = 'none';
+      infoDiv.style.display = 'none';
+
+      if (!code || code.length < 4) {
+        errorDiv.textContent = 'Please enter a valid session code.';
+        errorDiv.style.display = 'block';
+        return;
+      }
+
+      infoDiv.textContent = 'Looking for session...';
+      infoDiv.style.display = 'block';
+
+      try {
+        const session = await getSession(code);
+        if (!session) {
+          errorDiv.textContent = 'Session not found. Please check the code.';
+          errorDiv.style.display = 'block';
+          infoDiv.style.display = 'none';
+          return;
+        }
+        window.location.href = `assessment.html?session=${code}`;
+      } catch (err) {
+        errorDiv.textContent = 'Error: ' + err.message;
+        errorDiv.style.display = 'block';
+        infoDiv.style.display = 'none';
+      }
+    }
+
+    // Check URL param
+    const urlCode = getUrlParam('session');
+    if (urlCode) {
+      codeInput.value = urlCode.toUpperCase();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — AI Maturity Assessment</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>Admin Dashboard</h1>
+    <p>Manage sessions &amp; view results</p>
+  </div>
+
+  <div class="container-wide">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="admin.html" class="active">Admin</a>
+    </nav>
+
+    <!-- Login -->
+    <div id="loginSection">
+      <div class="card card-accent" style="max-width:400px;margin:0 auto;">
+        <div class="card-header">Admin Access</div>
+        <div class="form-group">
+          <label for="adminPassword">Password</label>
+          <input type="password" id="adminPassword" placeholder="Enter admin password">
+        </div>
+        <div id="loginError" class="message message-error"></div>
+        <button class="btn btn-primary btn-full" onclick="doLogin()">Sign In</button>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+        <h2 style="font-size:1.2rem;">Assessment Sessions</h2>
+        <div style="display:flex;gap:8px;">
+          <a class="btn btn-primary" href="create-session.html" style="font-size:0.85rem;">+ New Session</a>
+          <button class="btn btn-outline" onclick="logoutAdmin();location.reload();" style="font-size:0.85rem;">Sign Out</button>
+        </div>
+      </div>
+
+      <div id="sessionsContainer">
+        <div class="loading"><div class="spinner"></div><p>Loading sessions...</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    if (checkAdmin()) {
+      document.getElementById('loginSection').classList.add('hidden');
+      document.getElementById('dashboard').classList.remove('hidden');
+      loadDashboard();
+    }
+
+    document.getElementById('adminPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') doLogin();
+    });
+
+    function doLogin() {
+      const pw = document.getElementById('adminPassword').value;
+      if (loginAdmin(pw)) {
+        document.getElementById('loginSection').classList.add('hidden');
+        document.getElementById('dashboard').classList.remove('hidden');
+        loadDashboard();
+      } else {
+        const e = document.getElementById('loginError');
+        e.textContent = 'Incorrect password.';
+        e.style.display = 'block';
+      }
+    }
+
+    async function loadDashboard() {
+      const container = document.getElementById('sessionsContainer');
+      try {
+        const sessions = await getAllSessions();
+
+        if (sessions.length === 0) {
+          container.innerHTML = `<div class="card text-center">
+            <p style="color:var(--text-secondary);">No sessions created yet.</p>
+            <a href="create-session.html" class="btn btn-primary mt-16">Create First Session</a>
+          </div>`;
+          return;
+        }
+
+        // Get response counts for each session
+        const counts = {};
+        for (const s of sessions) {
+          const snap = await db.collection(RESPONSES_COLLECTION)
+            .where('sessionCode', '==', s.code).get();
+          counts[s.code] = snap.size;
+        }
+
+        container.innerHTML = sessions.map(s => {
+          const count = counts[s.code] || 0;
+          const date = s.createdAt ? formatDate(s.createdAt) : '';
+          return `<div class="session-row">
+            <div class="session-info">
+              <div class="session-code">${s.code}</div>
+              <div class="session-name">${s.name}</div>
+              <div class="session-org">${s.organisation}</div>
+              <div class="session-meta">${count} Participants · Created: ${date}</div>
+            </div>
+            <div class="session-actions">
+              <a class="btn btn-blue" href="results.html?session=${s.code}" style="font-size:0.75rem;padding:6px 12px;">Results</a>
+              <button class="btn btn-outline" onclick="copySessionLink('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Copy Link</button>
+              <button class="btn btn-outline" onclick="downloadCSV('${s.code}', '${s.name.replace(/'/g, "\\'")}')" style="font-size:0.75rem;padding:6px 12px;">CSV</button>
+              <button class="btn btn-outline" onclick="clearSessionResponses('${s.code}')" style="font-size:0.75rem;padding:6px 12px;color:var(--orange);border-color:var(--orange);">Clear (Data)</button>
+              <button class="btn btn-danger" onclick="deleteSession('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Delete</button>
+            </div>
+          </div>`;
+        }).join('');
+
+      } catch (err) {
+        container.innerHTML = `<div class="card"><p class="message-error" style="display:block">Error: ${err.message}</p></div>`;
+      }
+    }
+
+    function copySessionLink(code) {
+      const url = `${window.location.origin}${window.location.pathname.replace('admin.html', 'assessment.html')}?session=${code}`;
+      navigator.clipboard.writeText(url).then(() => alert('Link copied!')).catch(() => {
+        prompt('Copy link:', url);
+      });
+    }
+
+    async function downloadCSV(code, name) {
+      try {
+        const responses = await getResponses(code);
+        if (responses.length === 0) { alert('No responses available.'); return; }
+        exportMaturityCSV(name, responses);
+      } catch (err) {
+        alert('Export error: ' + err.message);
+      }
+    }
+  </script>
+</body>
+</html>

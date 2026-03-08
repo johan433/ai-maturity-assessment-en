@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "maturity_responses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sessionCode", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
