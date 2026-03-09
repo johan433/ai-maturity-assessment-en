@@ -7,6 +7,14 @@
         { "fieldPath": "sessionCode", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "maturity_responses_en",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sessionCode", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
