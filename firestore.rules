@@ -15,5 +15,12 @@ service cloud.firestore {
     match /maturity_responses/{document=**} {
       allow read, write: if true;
     }
+    // AI Maturity Assessment (English) collections
+    match /maturity_sessions_en/{document=**} {
+      allow read, write: if true;
+    }
+    match /maturity_responses_en/{document=**} {
+      allow read, write: if true;
+    }
   }
 }
