@@ -268,6 +268,28 @@ async function submitUseCases(sessionCode, groupInfo, ideas) {
   return docRef.id;
 }
 
+async function getUseCaseSubmission(id) {
+  const doc = await db.collection(USECASE_SUBMISSIONS_COLLECTION).doc(id).get();
+  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+}
+
+async function appendUseCaseIdeas(submissionId, newIdeas) {
+  const docRef = db.collection(USECASE_SUBMISSIONS_COLLECTION).doc(submissionId);
+  const doc = await docRef.get();
+  if (!doc.exists) throw new Error('Submission not found');
+
+  const data = doc.data();
+  const existingIdeas = data.ideas || [];
+  const allIdeas = [...existingIdeas, ...newIdeas];
+
+  await docRef.update({
+    ideas: allIdeas,
+    ideaCount: allIdeas.length,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  return allIdeas.length;
+}
+
 async function getUseCaseSubmissions(sessionCode) {
   const snapshot = await db.collection(USECASE_SUBMISSIONS_COLLECTION)
     .where('sessionCode', '==', sessionCode.toUpperCase())

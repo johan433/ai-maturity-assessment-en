@@ -108,6 +108,9 @@
         </div>
       </div>
 
+      <!-- Previously Submitted Ideas (shown when returning) -->
+      <div id="existingIdeasSummary" class="hidden"></div>
+
       <!-- Ideas Container -->
       <div id="ideasContainer"></div>
 
@@ -131,9 +134,8 @@
         <h2>Ideas Submitted!</h2>
         <p style="color:var(--text-secondary);margin-bottom:8px;">Your AI use case ideas have been successfully captured.</p>
         <div id="completionSummary" style="margin:24px 0;"></div>
-        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+        <div id="completionActions" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
           <a href="index.html" class="btn btn-outline">Back to Home</a>
-          <button class="btn btn-blue" onclick="location.reload()">Submit More Ideas</button>
         </div>
       </div>
     </div>
@@ -150,6 +152,8 @@
     let sessionCode = '';
     let sessionData = null;
     let ideaCount = 0;
+    let existingSubmissionId = '';
+    let existingIdeas = [];
 
     /* ---- Init ---- */
     (async function init() {
@@ -161,11 +165,57 @@
         sessionData = await getSession(sessionCode);
         if (!sessionData) { alert('Session not found.'); window.location.href = 'index.html'; return; }
         document.getElementById('sessionLabel').textContent = `${sessionData.organisation} — ${sessionData.name}`;
+
+        // Check if returning to an existing group
+        const groupId = getUrlParam('group');
+        if (groupId) {
+          try {
+            const submission = await getUseCaseSubmission(groupId);
+            if (submission && submission.sessionCode === sessionCode) {
+              existingSubmissionId = groupId;
+              existingIdeas = submission.ideas || [];
+              loadExistingGroup(submission);
+            }
+          } catch (e) {
+            console.warn('Could not load existing group:', e);
+          }
+        }
       } catch (err) {
         alert('Error: ' + err.message);
         window.location.href = 'index.html';
       }
     })();
+
+    function loadExistingGroup(submission) {
+      // Pre-fill group info
+      document.getElementById('groupName').value = submission.groupName || '';
+      document.getElementById('department').value = submission.department || '';
+
+      // Pre-fill members
+      const members = submission.members || [];
+      const container = document.getElementById('membersContainer');
+      container.innerHTML = '';
+      members.forEach(name => {
+        const row = document.createElement('div');
+        row.className = 'member-row';
+        row.innerHTML = `
+          <input type="text" class="member-input" value="${name.replace(/"/g, '&quot;')}" placeholder="Member name">
+          <button class="btn-icon" onclick="removeMember(this)" title="Remove">&times;</button>
+        `;
+        container.appendChild(row);
+      });
+      if (members.length === 0) {
+        addMember();
+      }
+
+      // Show returning banner
+      const banner = document.createElement('div');
+      banner.className = 'message message-info';
+      banner.style.display = 'block';
+      banner.innerHTML = `Welcome back, <strong>${submission.groupName}</strong>! You have <strong>${existingIdeas.length}</strong> idea(s) already submitted. Add more below.`;
+      const card = document.querySelector('#step-group .card');
+      card.insertBefore(banner, card.querySelector('.form-group'));
+    }
 
     /* ---- Members ---- */
     function addMember() {
@@ -200,6 +250,31 @@
 
       document.getElementById('step-group').classList.add('hidden');
       document.getElementById('step-ideas').classList.remove('hidden');
+
+      // Show existing ideas summary if returning
+      if (existingIdeas.length > 0) {
+        const summary = document.getElementById('existingIdeasSummary');
+        summary.classList.remove('hidden');
+        summary.innerHTML = `
+          <div class="card card-blue">
+            <div class="card-header" style="margin-bottom:12px;">Previously Submitted Ideas (${existingIdeas.length})</div>
+            ${existingIdeas.map((idea, i) => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.08);border-radius:8px;margin-bottom:6px;">
+                <div>
+                  <strong style="color:var(--text);">${idea.name}</strong>
+                  <span style="color:var(--text-secondary);font-size:0.85rem;margin-left:8px;">${idea.problemDescription ? idea.problemDescription.substring(0, 60) + '...' : ''}</span>
+                </div>
+                <div class="idea-scores" style="flex-shrink:0;">
+                  <span class="idea-score-badge feasibility">F: ${idea.feasibility?.total || 0}/15</span>
+                  <span class="idea-score-badge impact">I: ${idea.impact?.total || 0}/15</span>
+                  <span class="idea-score-badge combined">${idea.combinedScore || 0}/30</span>
+                </div>
+              </div>
+            `).join('')}
+            <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:12px;">Add new ideas below. They will be added to your existing submission.</p>
+          </div>
+        `;
+      }
 
       if (ideaCount === 0) addIdea();
     }
@@ -549,37 +624,70 @@
       };
 
       try {
-        await submitUseCases(sessionCode, groupInfo, ideas);
-        showCompletion(ideas);
+        let docId;
+        if (existingSubmissionId) {
+          // Append to existing submission
+          const formattedIdeas = ideas.map(idea => ({
+            name: idea.name,
+            problemDescription: idea.problemDescription,
+            processSteps: idea.processSteps || [],
+            whoAffected: idea.whoAffected,
+            frequency: idea.frequency,
+            timePerCycle: idea.timePerCycle,
+            aiApproach: idea.aiApproach,
+            dataAvailable: idea.dataAvailable,
+            successCriteria: idea.successCriteria,
+            feasibility: {
+              dataReadiness: Number(idea.dataReadiness) || 0,
+              technicalComplexity: Number(idea.technicalComplexity) || 0,
+              orgReadiness: Number(idea.orgReadiness) || 0,
+              total: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0)
+            },
+            impact: {
+              timeSaved: Number(idea.timeSaved) || 0,
+              errorReduction: Number(idea.errorReduction) || 0,
+              strategicValue: Number(idea.strategicValue) || 0,
+              total: (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0)
+            },
+            combinedScore: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0) +
+                            (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0),
+            pitch: idea.pitch
+          }));
+          const totalCount = await appendUseCaseIdeas(existingSubmissionId, formattedIdeas);
+          docId = existingSubmissionId;
+        } else {
+          docId = await submitUseCases(sessionCode, groupInfo, ideas);
+        }
+        showCompletion(ideas, docId);
       } catch (err) {
         showError('submitError', 'Error submitting: ' + err.message);
       }
     }
 
-    function showCompletion(ideas) {
+    function showCompletion(ideas, docId) {
       document.getElementById('step-ideas').classList.add('hidden');
       document.getElementById('step-complete').classList.remove('hidden');
 
-      const totalScore = ideas.reduce((sum, i) =>
-        sum + (i.dataReadiness || 0) + (i.technicalComplexity || 0) + (i.orgReadiness || 0) +
-        (i.timeSaved || 0) + (i.errorReduction || 0) + (i.strategicValue || 0), 0);
+      const totalNew = ideas.length;
+      const totalAll = existingIdeas.length + totalNew;
+      const returnUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}&group=${docId}`;
 
       document.getElementById('completionSummary').innerHTML = `
         <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
           <div class="score-card" style="min-width:120px;">
-            <div class="score-value">${ideas.length}</div>
-            <div class="score-label">Ideas Submitted</div>
+            <div class="score-value">${totalNew}</div>
+            <div class="score-label">New Ideas</div>
           </div>
           <div class="score-card" style="min-width:120px;">
-            <div class="score-value">${getMembers().length}</div>
-            <div class="score-label">Group Members</div>
+            <div class="score-value">${totalAll}</div>
+            <div class="score-label">Total Ideas</div>
           </div>
         </div>
         <div style="margin-top:16px;">
           <h3 style="font-size:1rem;margin-bottom:8px;">Ideas Captured:</h3>
           ${ideas.map((idea, i) => `
             <div style="background:var(--bg);padding:10px 16px;border-radius:8px;margin-bottom:6px;text-align:left;">
-              <strong>Idea ${i + 1}:</strong> ${idea.name}
+              <strong>Idea ${existingIdeas.length + i + 1}:</strong> ${idea.name}
               <span style="float:right;color:var(--blue);font-weight:600;">${
                 (idea.dataReadiness || 0) + (idea.technicalComplexity || 0) + (idea.orgReadiness || 0) +
                 (idea.timeSaved || 0) + (idea.errorReduction || 0) + (idea.strategicValue || 0)
@@ -587,7 +695,31 @@
             </div>
           `).join('')}
         </div>
+        <div class="card card-blue" style="margin-top:20px;text-align:left;">
+          <div class="card-header" style="margin-bottom:8px;">Return Link</div>
+          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
+            Bookmark or share this link with your group to come back and add more ideas later.
+          </p>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="returnLink" value="${returnUrl}" readonly
+              style="flex:1;font-size:0.8rem;background:var(--bg);cursor:text;">
+            <button class="btn btn-blue" style="flex-shrink:0;" onclick="copyReturnLink()">Copy Link</button>
+          </div>
+          <div id="copyReturnMsg" class="message message-success" style="margin-top:8px;"></div>
+        </div>
       `;
+    }
+
+    function copyReturnLink() {
+      const input = document.getElementById('returnLink');
+      navigator.clipboard.writeText(input.value).then(() => {
+        const msg = document.getElementById('copyReturnMsg');
+        msg.textContent = 'Link copied to clipboard!';
+        msg.style.display = 'block';
+        setTimeout(() => msg.style.display = 'none', 3000);
+      }).catch(() => {
+        input.select();
+      });
     }
 
     /* ---- Helpers ---- */
