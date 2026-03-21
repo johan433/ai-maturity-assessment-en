@@ -130,13 +130,24 @@
       }
     }
 
-    // Check URL param
+    // Check URL param — pre-fill session code when shared via admin link
     const urlCode = getUrlParam('session');
     const urlModule = getUrlParam('module');
+    const pendingCode = urlCode ? urlCode.toUpperCase() : '';
+
     if (urlCode && urlModule) {
       showJoinForm(urlModule);
-      codeInput.value = urlCode.toUpperCase();
+      codeInput.value = pendingCode;
     }
+
+    // Override showJoinForm to auto-fill code from URL
+    const _origShowJoinForm = showJoinForm;
+    showJoinForm = function(module) {
+      _origShowJoinForm(module);
+      if (pendingCode) {
+        codeInput.value = pendingCode;
+      }
+    };
   </script>
 </body>
 </html>

@@ -239,6 +239,7 @@ async function submitUseCases(sessionCode, groupInfo, ideas) {
     ideas: ideas.map(idea => ({
       name: idea.name,
       problemDescription: idea.problemDescription,
+      processSteps: idea.processSteps || [],
       whoAffected: idea.whoAffected,
       frequency: idea.frequency,
       timePerCycle: idea.timePerCycle,
@@ -284,7 +285,7 @@ function exportUseCaseCSV(sessionName, submissions) {
 
   const headers = [
     'Group', 'Department', 'Members',
-    'Idea Name', 'Problem', 'Who Affected', 'Frequency', 'Time/Cycle',
+    'Idea Name', 'Problem', 'Process Steps', 'Who Affected', 'Frequency', 'Time/Cycle',
     'AI Approach', 'Data Available', 'Success Criteria',
     'Data Readiness', 'Technical Complexity', 'Org Readiness', 'Feasibility Total',
     'Time Saved', 'Error Reduction', 'Strategic Value', 'Impact Total',
@@ -296,7 +297,7 @@ function exportUseCaseCSV(sessionName, submissions) {
     (s.ideas || []).forEach(idea => {
       rows.push([
         s.groupName, s.department, (s.members || []).join('; '),
-        idea.name, idea.problemDescription, idea.whoAffected, idea.frequency, idea.timePerCycle,
+        idea.name, idea.problemDescription, (idea.processSteps || []).join(' → '), idea.whoAffected, idea.frequency, idea.timePerCycle,
         idea.aiApproach, idea.dataAvailable, idea.successCriteria,
         idea.feasibility?.dataReadiness, idea.feasibility?.technicalComplexity, idea.feasibility?.orgReadiness, idea.feasibility?.total,
         idea.impact?.timeSaved, idea.impact?.errorReduction, idea.impact?.strategicValue, idea.impact?.total,

@@ -142,11 +142,9 @@
 
     function copyLinks(code) {
       const base = window.location.origin + window.location.pathname.replace('admin.html', '');
-      const maturityUrl = `${base}assessment.html?session=${code}`;
-      const usecaseUrl = `${base}usecase.html?session=${code}`;
-      const text = `AI Maturity Assessment:\n${maturityUrl}\n\nAI Use Case Discovery:\n${usecaseUrl}`;
-      navigator.clipboard.writeText(text).then(() => alert('Both links copied!')).catch(() => {
-        prompt('Copy links:', text);
+      const url = `${base}index.html?session=${code}`;
+      navigator.clipboard.writeText(url).then(() => alert('Link copied!')).catch(() => {
+        prompt('Copy link:', url);
       });
     }
 

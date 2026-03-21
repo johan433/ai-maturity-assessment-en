@@ -317,6 +317,14 @@
           <div style="margin-top:12px;">
             <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Problem</div>
             <p style="font-size:0.9rem;color:var(--text);margin:0;">${idea.problemDescription}</p>
+            ${idea.processSteps && idea.processSteps.length > 0 ? `
+              <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                ${idea.processSteps.map((step, si) => `<span style="display:inline-flex;align-items:center;gap:4px;">
+                  <span style="background:var(--blue);color:white;width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:0.65rem;font-weight:700;">${si+1}</span>
+                  <span style="font-size:0.85rem;color:var(--text);">${step}</span>
+                  ${si < idea.processSteps.length - 1 ? '<span style="color:var(--blue);font-weight:600;">→</span>' : ''}
+                </span>`).join('')}
+              </div>` : ''}
             ${idea.whoAffected ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin:4px 0 0;">Affected: ${idea.whoAffected}</p>` : ''}
             ${idea.frequency ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin:2px 0 0;">Frequency: ${idea.frequency}${idea.timePerCycle ? ` · ${idea.timePerCycle} per cycle` : ''}</p>` : ''}
           </div>` : ''}

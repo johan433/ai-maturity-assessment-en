@@ -35,7 +35,7 @@
           <input type="text" id="groupName" placeholder="e.g. Operations Team, Table 3">
         </div>
         <div class="form-group">
-          <label for="department">Department *</label>
+          <label for="department">Department <span style="font-weight:400;color:var(--text-secondary);">(optional)</span></label>
           <input type="text" id="department" placeholder="e.g. Finance, IT, Operations">
         </div>
         <div class="form-group">
@@ -193,8 +193,8 @@
       const department = document.getElementById('department').value.trim();
       const members = getMembers();
 
-      if (!groupName || !department || members.length === 0) {
-        showError('groupError', 'Please fill in all fields and add at least one member.');
+      if (!groupName || members.length === 0) {
+        showError('groupError', 'Please fill in the group name and add at least one member.');
         return;
       }
 
@@ -255,6 +255,14 @@
           <div class="form-group">
             <label>Who is affected? (roles / teams / customers) *</label>
             <input type="text" id="idea_affected_${n}" placeholder="e.g. Claims processors, customer service team">
+          </div>
+
+          <div class="form-group">
+            <label>Process Steps <span style="font-weight:400;color:var(--text-secondary);">(optional — map the sequence)</span></label>
+            <div class="process-steps" id="process_steps_${n}">
+              ${renderProcessSteps(n, 5)}
+            </div>
+            <button class="btn btn-outline" style="font-size:0.8rem;padding:6px 14px;margin-top:6px;" onclick="addProcessStep(${n})">+ Add Step</button>
           </div>
 
           <div class="form-row">
@@ -418,6 +426,41 @@
       if (el(`combinedTotal_${n}`)) el(`combinedTotal_${n}`).textContent = feasibility + impact;
     }
 
+    /* ---- Process Steps ---- */
+    function renderProcessSteps(ideaNum, count) {
+      let html = '';
+      for (let i = 1; i <= count; i++) {
+        html += `<div class="process-step">
+          <div class="process-step-number">${i}</div>
+          <input type="text" class="process-step-input" placeholder="Step ${i}...">
+          <div class="process-step-arrow">&#8594;</div>
+        </div>`;
+      }
+      return html;
+    }
+
+    function addProcessStep(ideaNum) {
+      const container = document.getElementById(`process_steps_${ideaNum}`);
+      const count = container.children.length + 1;
+      const step = document.createElement('div');
+      step.className = 'process-step';
+      step.innerHTML = `
+        <div class="process-step-number">${count}</div>
+        <input type="text" class="process-step-input" placeholder="Step ${count}...">
+        <div class="process-step-arrow">&#8594;</div>
+      `;
+      container.appendChild(step);
+      step.querySelector('input').focus();
+    }
+
+    function getProcessSteps(ideaNum) {
+      const container = document.getElementById(`process_steps_${ideaNum}`);
+      if (!container) return [];
+      return Array.from(container.querySelectorAll('.process-step-input'))
+        .map(input => input.value.trim())
+        .filter(v => v.length > 0);
+    }
+
     function toggleApproachTag(el) {
       el.classList.toggle('selected');
     }
@@ -426,11 +469,24 @@
     function collectIdeas() {
       const ideaBlocks = document.querySelectorAll('.idea-block');
       const ideas = [];
+      const unnamed = [];
 
-      ideaBlocks.forEach(block => {
+      ideaBlocks.forEach((block, blockIdx) => {
         const n = block.id.replace('idea_', '');
         const name = val(`idea_name_${n}`);
-        if (!name) return; // skip empty ideas
+
+        // Check if this idea has ANY content filled in
+        const hasContent = name ||
+          val(`idea_problem_${n}`) ||
+          val(`idea_affected_${n}`) ||
+          val(`idea_ai_${n}`) ||
+          (dot_data[n] && Object.keys(dot_data[n]).length > 0);
+
+        if (!hasContent) return; // truly empty idea, skip
+
+        if (!name) {
+          unnamed.push(blockIdx + 1);
+        }
 
         const approaches = [];
         block.querySelectorAll('.approach-tag.selected').forEach(tag => approaches.push(tag.textContent.trim()));
@@ -445,8 +501,9 @@
         const scores = dot_data[n] || {};
 
         ideas.push({
-          name,
+          name: name || `Idea ${blockIdx + 1}`,
           problemDescription: val(`idea_problem_${n}`),
+          processSteps: getProcessSteps(n),
           whoAffected: val(`idea_affected_${n}`),
           frequency: document.getElementById(`idea_frequency_${n}`)?.value || '',
           timePerCycle: val(`idea_time_${n}`),
@@ -463,7 +520,7 @@
         });
       });
 
-      return ideas;
+      return { ideas, unnamed };
     }
 
     function val(id) {
@@ -473,17 +530,15 @@
 
     /* ---- Submit ---- */
     async function submitAll() {
-      const ideas = collectIdeas();
+      const { ideas, unnamed } = collectIdeas();
 
       if (ideas.length === 0) {
-        showError('submitError', 'Please fill in at least one idea with a name.');
+        showError('submitError', 'Please fill in at least one idea.');
         return;
       }
 
-      // Validate required fields on first idea at minimum
-      const first = ideas[0];
-      if (!first.problemDescription || !first.whoAffected) {
-        showError('submitError', 'Please fill in the problem description and who is affected for each idea.');
+      if (unnamed.length > 0) {
+        showError('submitError', `Please give a name/title to idea(s): ${unnamed.join(', ')}`);
         return;
       }
 
