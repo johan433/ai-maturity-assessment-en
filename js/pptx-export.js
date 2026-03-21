@@ -415,7 +415,7 @@ function addMatrixSlide(pptx, allIdeas) {
   // Chart area dimensions (max Y = CY+CH = 5.6, legend below ~6.0, footer at 7.08)
   const CX = 0.8, CY = 1.0, CW = 5.2, CH = 4.6;
 
-  // Build scatter data grouped by group name
+  // Build data grouped by group name
   const groups = {};
   allIdeas.forEach(idea => {
     const gn = idea.groupName || 'Unknown';
@@ -427,48 +427,78 @@ function addMatrixSlide(pptx, allIdeas) {
     });
   });
 
-  // Try PptxGenJS scatter chart
-  const chartData = Object.entries(groups).map(([name, points], i) => ({
-    name: name,
-    values: points.map(p => [p.x, p.y]),
-  }));
+  // Draw chart background and axes manually (avoids PptxGenJS chart XML issues)
+  // Chart plot area background
+  slide.addShape(pptx.shapes.RECTANGLE, {
+    x: CX, y: CY, w: CW, h: CH,
+    fill: { color: 'FAFAFA' },
+    line: { color: 'DDDDDD', width: 0.5 },
+  });
 
-  try {
-    slide.addChart(pptx.charts.SCATTER, chartData, {
-      x: CX, y: CY, w: CW, h: CH,
-      showTitle: false,
-      showLegend: true,
-      legendPos: 'b',
-      legendFontSize: 9,
-      catAxisMinVal: 0, catAxisMaxVal: 15,
-      valAxisMinVal: 0, valAxisMaxVal: 15,
-      catAxisTitle: 'FEASIBILITY (/15)',
-      valAxisTitle: 'IMPACT (/15)',
-      catAxisTitleColor: PX.darkBlue,
-      valAxisTitleColor: PX.darkBlue,
-      catAxisLabelColor: PX.textLight,
-      valAxisLabelColor: PX.textLight,
-      catGridLine: { color: 'EEEEEE', size: 0.5 },
-      valGridLine: { color: 'EEEEEE', size: 0.5 },
-      chartColors: CHART_COLORS.slice(0, Object.keys(groups).length),
-      lineSize: 0,
-      lineDataSymbolSize: 10,
+  // Grid lines (every 3 units = 5 lines)
+  for (let v = 3; v <= 12; v += 3) {
+    const gx = CX + (v / 15) * CW;
+    const gy = CY + CH - (v / 15) * CH;
+    // Vertical grid
+    slide.addShape(pptx.shapes.LINE, {
+      x: gx, y: CY, w: 0.001, h: CH,
+      line: { color: 'EEEEEE', width: 0.5 },
     });
-  } catch (e) {
-    // Fallback: draw dots manually as shapes
-    const colorArr = CHART_COLORS;
-    const groupNames = Object.keys(groups);
-    groupNames.forEach((gn, gi) => {
-      groups[gn].forEach(p => {
-        const dotX = CX + (p.x / 15) * CW;
-        const dotY = CY + CH - (p.y / 15) * CH;
-        slide.addShape(pptx.shapes.OVAL, {
-          x: dotX - 0.12, y: dotY - 0.12, w: 0.24, h: 0.24,
-          fill: { color: colorArr[gi % colorArr.length] },
-        });
-      });
+    // Horizontal grid
+    slide.addShape(pptx.shapes.LINE, {
+      x: CX, y: gy, w: CW, h: 0.001,
+      line: { color: 'EEEEEE', width: 0.5 },
+    });
+    // Axis labels
+    slide.addText(String(v), {
+      x: CX - 0.35, y: gy - 0.1, w: 0.3, h: 0.2,
+      fontSize: 7, color: PX.textLight, align: 'right', fontFace: 'Arial',
+    });
+    slide.addText(String(v), {
+      x: gx - 0.15, y: CY + CH + 0.02, w: 0.3, h: 0.2,
+      fontSize: 7, color: PX.textLight, align: 'center', fontFace: 'Arial',
     });
   }
+
+  // Axis titles
+  slide.addText('FEASIBILITY (/15)', {
+    x: CX, y: CY + CH + 0.2, w: CW, h: 0.25,
+    fontSize: 9, fontFace: 'Arial', bold: true, color: PX.darkBlue, align: 'center',
+  });
+  slide.addText('IMPACT (/15)', {
+    x: CX - 0.7, y: CY + CH * 0.35, w: 0.5, h: 0.3,
+    fontSize: 9, fontFace: 'Arial', bold: true, color: PX.darkBlue,
+    rotate: 270,
+  });
+
+  // Plot dots for each group
+  const groupNames = Object.keys(groups);
+  groupNames.forEach((gn, gi) => {
+    const color = CHART_COLORS[gi % CHART_COLORS.length];
+    groups[gn].forEach(p => {
+      const dotX = CX + (p.x / 15) * CW;
+      const dotY = CY + CH - (p.y / 15) * CH;
+      slide.addShape(pptx.shapes.OVAL, {
+        x: dotX - 0.14, y: dotY - 0.14, w: 0.28, h: 0.28,
+        fill: { color: color },
+        line: { color: PX.white, width: 1 },
+      });
+    });
+  });
+
+  // Legend below chart
+  const legendY = CY + CH + 0.5;
+  groupNames.forEach((gn, gi) => {
+    const lx = CX + gi * 2.2;
+    slide.addShape(pptx.shapes.OVAL, {
+      x: lx, y: legendY + 0.03, w: 0.14, h: 0.14,
+      fill: { color: CHART_COLORS[gi % CHART_COLORS.length] },
+    });
+    slide.addText(gn, {
+      x: lx + 0.2, y: legendY, w: 1.8, h: 0.2,
+      fontSize: 8, fontFace: 'Arial', color: PX.text,
+    });
+  });
 
   // Quadrant dashed lines (overlay)
   const midX = CX + CW / 2;
