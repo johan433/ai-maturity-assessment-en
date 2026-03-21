@@ -251,27 +251,27 @@ function addIdeaSlide(pptx, idea, index, total) {
       fontSize: 9, fontFace: 'Arial', bold: true, color: PX.orange,
     });
     leftY += 0.25;
-    slide.addText(truncate(idea.problemDescription, 300), {
-      x: 0.5, y: leftY, w: 5, h: 0.8,
+    slide.addText(truncate(idea.problemDescription, 250), {
+      x: 0.5, y: leftY, w: 5, h: 0.65,
       fontSize: 10, fontFace: 'Arial', color: PX.text,
       valign: 'top', shrinkText: true,
     });
-    leftY += 0.8;
+    leftY += 0.65;
   }
 
   if (idea.processSteps && idea.processSteps.length > 0) {
     slide.addText('PROCESS STEPS', {
-      x: 0.5, y: leftY, w: 5, h: 0.25,
+      x: 0.5, y: leftY, w: 5, h: 0.2,
       fontSize: 9, fontFace: 'Arial', bold: true, color: PX.orange,
     });
-    leftY += 0.25;
+    leftY += 0.2;
     const stepsText = idea.processSteps.map((s, i) => `${i + 1}. ${s}`).join('\n');
-    slide.addText(truncate(stepsText, 250), {
-      x: 0.5, y: leftY, w: 5, h: 0.9,
+    slide.addText(truncate(stepsText, 200), {
+      x: 0.5, y: leftY, w: 5, h: 0.7,
       fontSize: 9, fontFace: 'Arial', color: PX.text,
       valign: 'top', shrinkText: true,
     });
-    leftY += 0.9;
+    leftY += 0.7;
   }
 
   if (idea.whoAffected) {
@@ -300,12 +300,12 @@ function addIdeaSlide(pptx, idea, index, total) {
       fontSize: 9, fontFace: 'Arial', bold: true, color: PX.lightBlue,
     });
     rightY += 0.25;
-    slide.addText(truncate(idea.aiApproach, 250), {
-      x: 5.8, y: rightY, w: 3.7, h: 0.8,
+    slide.addText(truncate(idea.aiApproach, 200), {
+      x: 5.8, y: rightY, w: 3.7, h: 0.65,
       fontSize: 10, fontFace: 'Arial', color: PX.text,
       valign: 'top', shrinkText: true,
     });
-    rightY += 0.8;
+    rightY += 0.65;
   }
 
   if (idea.dataAvailable) {
@@ -336,48 +336,48 @@ function addIdeaSlide(pptx, idea, index, total) {
     rightY += 0.45;
   }
 
-  // --- SCORE BAR ---
-  const scoreY = 5.3;
+  // --- SCORE BAR (compact inline layout) ---
+  const scoreY = 4.7;
   const scoreItems = [
-    { label: 'Data Readiness', val: idea.feasibility?.dataReadiness || 0, color: PX.darkBlue },
-    { label: 'Tech Complexity', val: idea.feasibility?.technicalComplexity || 0, color: PX.darkBlue },
-    { label: 'Org Readiness', val: idea.feasibility?.orgReadiness || 0, color: PX.darkBlue },
-    { label: 'Time Saved', val: idea.impact?.timeSaved || 0, color: PX.orange },
-    { label: 'Error Reduction', val: idea.impact?.errorReduction || 0, color: PX.orange },
-    { label: 'Strategic Value', val: idea.impact?.strategicValue || 0, color: PX.orange },
+    { label: 'Data', val: idea.feasibility?.dataReadiness || 0, color: PX.darkBlue },
+    { label: 'Tech', val: idea.feasibility?.technicalComplexity || 0, color: PX.darkBlue },
+    { label: 'Org', val: idea.feasibility?.orgReadiness || 0, color: PX.darkBlue },
+    { label: 'Time', val: idea.impact?.timeSaved || 0, color: PX.orange },
+    { label: 'Errors', val: idea.impact?.errorReduction || 0, color: PX.orange },
+    { label: 'Strategy', val: idea.impact?.strategicValue || 0, color: PX.orange },
   ];
 
   // Divider
   slide.addShape(pptx.shapes.RECTANGLE, {
-    x: 0.5, y: scoreY - 0.15, w: 9, h: 0.01,
+    x: 0.5, y: scoreY - 0.1, w: 9, h: 0.01,
     fill: { color: 'DDDDDD' },
   });
 
   // Feasibility / Impact labels
   slide.addText('FEASIBILITY', {
-    x: 0.5, y: scoreY - 0.05, w: 4.2, h: 0.2,
+    x: 0.5, y: scoreY, w: 4.2, h: 0.2,
     fontSize: 8, fontFace: 'Arial', bold: true, color: PX.darkBlue,
   });
   slide.addText('IMPACT', {
-    x: 5.0, y: scoreY - 0.05, w: 4.5, h: 0.2,
+    x: 5.0, y: scoreY, w: 4.5, h: 0.2,
     fontSize: 8, fontFace: 'Arial', bold: true, color: PX.orange,
   });
 
   scoreItems.forEach((item, i) => {
     const x = 0.5 + i * 1.5;
-    // Score circle
+    // Score circle (smaller)
     slide.addShape(pptx.shapes.OVAL, {
-      x: x + 0.3, y: scoreY + 0.2, w: 0.5, h: 0.5,
+      x: x + 0.3, y: scoreY + 0.22, w: 0.42, h: 0.42,
       fill: { color: item.color },
     });
     slide.addText(`${item.val}/5`, {
-      x: x + 0.3, y: scoreY + 0.2, w: 0.5, h: 0.5,
-      fontSize: 10, fontFace: 'Arial', bold: true, color: PX.white,
+      x: x + 0.3, y: scoreY + 0.22, w: 0.42, h: 0.42,
+      fontSize: 9, fontFace: 'Arial', bold: true, color: PX.white,
       align: 'center', valign: 'middle',
     });
     // Label below
     slide.addText(item.label, {
-      x: x, y: scoreY + 0.75, w: 1.1, h: 0.3,
+      x: x, y: scoreY + 0.66, w: 1.1, h: 0.22,
       fontSize: 7, fontFace: 'Arial', color: PX.textLight,
       align: 'center', valign: 'top',
     });
@@ -386,13 +386,13 @@ function addIdeaSlide(pptx, idea, index, total) {
   // --- PITCH ---
   if (idea.pitch) {
     slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
-      x: 0.5, y: 6.2, w: 9, h: 0.7,
+      x: 0.5, y: 5.65, w: 9, h: 0.55,
       fill: { color: PX.lightGrey },
       rectRadius: 0.1,
     });
     slide.addText(`"${idea.pitch}"`, {
-      x: 0.7, y: 6.25, w: 8.6, h: 0.6,
-      fontSize: 10, fontFace: 'Arial', italic: true, color: PX.darkBlue,
+      x: 0.7, y: 5.68, w: 8.6, h: 0.48,
+      fontSize: 9, fontFace: 'Arial', italic: true, color: PX.darkBlue,
       valign: 'middle', shrinkText: true,
     });
   }
@@ -411,8 +411,8 @@ function addMatrixSlide(pptx, allIdeas) {
     fontSize: 10, fontFace: 'Arial', color: PX.textLight,
   });
 
-  // Chart area dimensions
-  const CX = 0.8, CY = 1.0, CW = 5.8, CH = 5.5;
+  // Chart area dimensions (fits within slide with legend below)
+  const CX = 0.8, CY = 0.9, CW = 5.5, CH = 4.8;
 
   // Build scatter data grouped by group name
   const groups = {};
@@ -499,20 +499,20 @@ function addMatrixSlide(pptx, allIdeas) {
 
   // Ranked list on the right
   slide.addText('Ranked by Score', {
-    x: 7.0, y: 1.0, w: 2.8, h: 0.3,
+    x: 6.8, y: 0.9, w: 2.8, h: 0.3,
     fontSize: 13, fontFace: 'Arial', bold: true, color: PX.darkBlue,
   });
 
   const sorted = [...allIdeas].sort((a, b) => (b.combinedScore || 0) - (a.combinedScore || 0));
-  const listItems = sorted.slice(0, 15).map((idea, i) => {
+  const listItems = sorted.slice(0, 12).map((idea, i) => {
     const priority = getPriorityLabel(idea.feasibility?.total || 0, idea.impact?.total || 0);
-    return { text: `${i + 1}. ${truncate(idea.name, 25)} (${idea.combinedScore || 0}/30)`, options: { fontSize: 9, color: getPriorityColor(priority), fontFace: 'Arial', bullet: false } };
+    return { text: `${i + 1}. ${truncate(idea.name, 22)} (${idea.combinedScore || 0}/30)`, options: { fontSize: 8, color: getPriorityColor(priority), fontFace: 'Arial', bullet: false } };
   });
 
   slide.addText(listItems, {
-    x: 7.0, y: 1.35, w: 2.8, h: 5.2,
+    x: 6.8, y: 1.2, w: 2.8, h: 4.5,
     valign: 'top',
-    paraSpaceAfter: 6,
+    paraSpaceAfter: 5,
   });
 }
 
@@ -547,9 +547,9 @@ function addRoadmapSlide(pptx, allIdeas) {
     cat.ideas.sort((a, b) => (b.combinedScore || 0) - (a.combinedScore || 0));
   });
 
-  let yPos = 1.0;
+  let yPos = 0.95;
   Object.entries(categories).forEach(([label, cat]) => {
-    const boxH = 1.35;
+    const boxH = 1.15;
 
     // Background box
     slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
@@ -567,19 +567,19 @@ function addRoadmapSlide(pptx, allIdeas) {
 
     // Phase title + timeline
     slide.addText(cat.phase, {
-      x: 0.8, y: yPos + 0.05, w: 4, h: 0.3,
-      fontSize: 13, fontFace: 'Arial', bold: true, color: cat.color,
+      x: 0.8, y: yPos + 0.04, w: 4, h: 0.25,
+      fontSize: 12, fontFace: 'Arial', bold: true, color: cat.color,
     });
     slide.addText(cat.time, {
-      x: 7.5, y: yPos + 0.05, w: 1.8, h: 0.3,
-      fontSize: 10, fontFace: 'Arial', color: cat.color,
+      x: 7.5, y: yPos + 0.04, w: 1.8, h: 0.25,
+      fontSize: 9, fontFace: 'Arial', color: cat.color,
       align: 'right',
     });
 
     // Description
     slide.addText(cat.desc, {
-      x: 0.8, y: yPos + 0.35, w: 8.5, h: 0.2,
-      fontSize: 9, fontFace: 'Arial', italic: true, color: PX.textLight,
+      x: 0.8, y: yPos + 0.3, w: 8.5, h: 0.18,
+      fontSize: 8, fontFace: 'Arial', italic: true, color: PX.textLight,
     });
 
     // Idea names
@@ -587,18 +587,18 @@ function addRoadmapSlide(pptx, allIdeas) {
       ? cat.ideas.map(i => `${i.name} (${i.combinedScore || 0}/30)`).join('    ·    ')
       : 'None identified';
     slide.addText(ideaNames, {
-      x: 0.8, y: yPos + 0.6, w: 8.5, h: 0.65,
-      fontSize: 10, fontFace: 'Arial', color: PX.text,
+      x: 0.8, y: yPos + 0.5, w: 8.5, h: 0.55,
+      fontSize: 9, fontFace: 'Arial', color: PX.text,
       valign: 'top', shrinkText: true,
     });
 
-    yPos += boxH + 0.12;
+    yPos += boxH + 0.1;
   });
 
   // Next steps footer
   slide.addText('Next Steps: Validate Quick Wins with stakeholders, define pilot scope, assign owners, and set success metrics.', {
-    x: 0.5, y: 6.5, w: 9, h: 0.4,
-    fontSize: 10, fontFace: 'Arial', italic: true, color: PX.darkBlue,
+    x: 0.5, y: 6.05, w: 9, h: 0.35,
+    fontSize: 9, fontFace: 'Arial', italic: true, color: PX.darkBlue,
   });
 }
 
