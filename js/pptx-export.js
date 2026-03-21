@@ -412,8 +412,8 @@ function addMatrixSlide(pptx, allIdeas) {
     fontSize: 10, fontFace: 'Arial', color: PX.textLight,
   });
 
-  // Chart area dimensions — chart bottom at 5.0, axis title ~5.25, legend ~5.55, footer at 7.08
-  const CX = 0.8, CY = 1.0, CW = 5.2, CH = 4.0;
+  // Chart area dimensions — chart bottom at 4.6, axis labels ~4.8, title ~5.0, legend ~5.3
+  const CX = 0.8, CY = 1.0, CW = 5.2, CH = 3.6;
 
   // Build data grouped by group name
   const groups = {};
@@ -466,9 +466,9 @@ function addMatrixSlide(pptx, allIdeas) {
     fontSize: 9, fontFace: 'Arial', bold: true, color: PX.darkBlue, align: 'center',
   });
   slide.addText('IMPACT (/15)', {
-    x: CX - 0.7, y: CY + CH * 0.35, w: 0.5, h: 0.3,
+    x: CX - 0.75, y: CY + CH * 0.3, w: 1.2, h: 0.25,
     fontSize: 9, fontFace: 'Arial', bold: true, color: PX.darkBlue,
-    rotate: 270,
+    align: 'center', rotate: 270,
   });
 
   // Plot dots for each group
@@ -535,15 +535,13 @@ function addMatrixSlide(pptx, allIdeas) {
   });
 
   const sorted = [...allIdeas].sort((a, b) => (b.combinedScore || 0) - (a.combinedScore || 0));
-  const listItems = sorted.slice(0, 12).map((idea, i) => {
+  sorted.slice(0, 12).forEach((idea, i) => {
     const priority = getPriorityLabel(idea.feasibility?.total || 0, idea.impact?.total || 0);
-    return { text: `${i + 1}. ${truncate(idea.name, 22)} (${idea.combinedScore || 0}/30)`, options: { fontSize: 8, color: getPriorityColor(priority), fontFace: 'Arial', bullet: false } };
-  });
-
-  slide.addText(listItems, {
-    x: 6.8, y: 1.2, w: 2.8, h: 3.8,
-    valign: 'top',
-    paraSpaceAfter: 5,
+    slide.addText(`${i + 1}. ${truncate(idea.name, 20)} (${idea.combinedScore || 0}/30)`, {
+      x: 6.8, y: 1.25 + i * 0.28, w: 2.8, h: 0.26,
+      fontSize: 8, fontFace: 'Arial', color: getPriorityColor(priority),
+      valign: 'middle',
+    });
   });
 }
 
