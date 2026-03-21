@@ -435,28 +435,17 @@ function addMatrixSlide(pptx, allIdeas) {
     line: { color: 'DDDDDD', width: 0.5 },
   });
 
-  // Grid lines (every 3 units = 5 lines)
+  // Grid lines (every 3 units — no axis number labels to avoid overlap)
   for (let v = 3; v <= 12; v += 3) {
     const gx = CX + (v / 15) * CW;
     const gy = CY + CH - (v / 15) * CH;
-    // Vertical grid
     slide.addShape(pptx.shapes.LINE, {
       x: gx, y: CY, w: 0.001, h: CH,
       line: { color: 'EEEEEE', width: 0.5 },
     });
-    // Horizontal grid
     slide.addShape(pptx.shapes.LINE, {
       x: CX, y: gy, w: CW, h: 0.001,
       line: { color: 'EEEEEE', width: 0.5 },
-    });
-    // Axis labels
-    slide.addText(String(v), {
-      x: CX - 0.35, y: gy - 0.1, w: 0.3, h: 0.2,
-      fontSize: 7, color: PX.textLight, align: 'right', fontFace: 'Arial',
-    });
-    slide.addText(String(v), {
-      x: gx - 0.15, y: CY + CH + 0.02, w: 0.3, h: 0.2,
-      fontSize: 7, color: PX.textLight, align: 'center', fontFace: 'Arial',
     });
   }
 
@@ -471,17 +460,29 @@ function addMatrixSlide(pptx, allIdeas) {
     align: 'center', rotate: 270,
   });
 
-  // Plot dots for each group
+  // Build a ranked lookup: idea name → rank number
+  const rankedIdeas = [...allIdeas].sort((a, b) => (b.combinedScore || 0) - (a.combinedScore || 0));
+  const rankMap = {};
+  rankedIdeas.forEach((idea, i) => { rankMap[idea.name] = i + 1; });
+
+  // Plot numbered dots for each group
   const groupNames = Object.keys(groups);
   groupNames.forEach((gn, gi) => {
     const color = CHART_COLORS[gi % CHART_COLORS.length];
     groups[gn].forEach(p => {
       const dotX = CX + (p.x / 15) * CW;
       const dotY = CY + CH - (p.y / 15) * CH;
+      const dotSize = 0.34;
       slide.addShape(pptx.shapes.OVAL, {
-        x: dotX - 0.14, y: dotY - 0.14, w: 0.28, h: 0.28,
+        x: dotX - dotSize / 2, y: dotY - dotSize / 2, w: dotSize, h: dotSize,
         fill: { color: color },
         line: { color: PX.white, width: 1 },
+      });
+      // Number label on dot
+      slide.addText(String(rankMap[p.name] || ''), {
+        x: dotX - dotSize / 2, y: dotY - dotSize / 2, w: dotSize, h: dotSize,
+        fontSize: 9, fontFace: 'Arial', bold: true, color: PX.white,
+        align: 'center', valign: 'middle',
       });
     });
   });
@@ -578,7 +579,7 @@ function addRoadmapSlide(pptx, allIdeas) {
 
   let yPos = 0.95;
   Object.entries(categories).forEach(([label, cat]) => {
-    const boxH = 1.0;
+    const boxH = 0.85;
 
     // Background box
     slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
@@ -616,12 +617,12 @@ function addRoadmapSlide(pptx, allIdeas) {
       ? cat.ideas.map(i => `${i.name} (${i.combinedScore || 0}/30)`).join('    ·    ')
       : 'None identified';
     slide.addText(ideaNames, {
-      x: 0.8, y: yPos + 0.48, w: 8.5, h: 0.42,
+      x: 0.8, y: yPos + 0.46, w: 8.5, h: 0.32,
       fontSize: 9, fontFace: 'Arial', color: PX.text,
       valign: 'top', shrinkText: true,
     });
 
-    yPos += boxH + 0.1;
+    yPos += boxH + 0.08;
   });
 
   // Next steps footer
