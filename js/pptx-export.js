@@ -336,8 +336,8 @@ function addIdeaSlide(pptx, idea, index, total) {
     rightY += 0.45;
   }
 
-  // --- SCORE BAR (positioned dynamically after content) ---
-  const scoreY = Math.max(leftY, rightY) + 0.2;
+  // --- SCORE BAR (positioned dynamically after content, capped to fit) ---
+  const scoreY = Math.min(Math.max(leftY, rightY) + 0.2, 5.3);
   const scoreItems = [
     { label: 'Data Readiness', val: idea.feasibility?.dataReadiness || 0, color: PX.darkBlue },
     { label: 'Tech Complexity', val: idea.feasibility?.technicalComplexity || 0, color: PX.darkBlue },
@@ -412,8 +412,8 @@ function addMatrixSlide(pptx, allIdeas) {
     fontSize: 10, fontFace: 'Arial', color: PX.textLight,
   });
 
-  // Chart area dimensions (max Y = CY+CH = 5.6, legend below ~6.0, footer at 7.08)
-  const CX = 0.8, CY = 1.0, CW = 5.2, CH = 4.6;
+  // Chart area dimensions — chart bottom at 5.0, axis title ~5.25, legend ~5.55, footer at 7.08
+  const CX = 0.8, CY = 1.0, CW = 5.2, CH = 4.0;
 
   // Build data grouped by group name
   const groups = {};
@@ -541,7 +541,7 @@ function addMatrixSlide(pptx, allIdeas) {
   });
 
   slide.addText(listItems, {
-    x: 6.8, y: 1.2, w: 2.8, h: 4.5,
+    x: 6.8, y: 1.2, w: 2.8, h: 3.8,
     valign: 'top',
     paraSpaceAfter: 5,
   });
@@ -580,7 +580,7 @@ function addRoadmapSlide(pptx, allIdeas) {
 
   let yPos = 0.95;
   Object.entries(categories).forEach(([label, cat]) => {
-    const boxH = 1.15;
+    const boxH = 1.0;
 
     // Background box
     slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
@@ -618,7 +618,7 @@ function addRoadmapSlide(pptx, allIdeas) {
       ? cat.ideas.map(i => `${i.name} (${i.combinedScore || 0}/30)`).join('    ·    ')
       : 'None identified';
     slide.addText(ideaNames, {
-      x: 0.8, y: yPos + 0.5, w: 8.5, h: 0.55,
+      x: 0.8, y: yPos + 0.48, w: 8.5, h: 0.42,
       fontSize: 9, fontFace: 'Arial', color: PX.text,
       valign: 'top', shrinkText: true,
     });
@@ -628,7 +628,7 @@ function addRoadmapSlide(pptx, allIdeas) {
 
   // Next steps footer
   slide.addText('Next Steps: Validate Quick Wins with stakeholders, define pilot scope, assign owners, and set success metrics.', {
-    x: 0.5, y: 6.05, w: 9, h: 0.35,
+    x: 0.5, y: yPos + 0.15, w: 9, h: 0.35,
     fontSize: 9, fontFace: 'Arial', italic: true, color: PX.darkBlue,
   });
 }
