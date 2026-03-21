@@ -336,62 +336,63 @@ function addIdeaSlide(pptx, idea, index, total) {
     rightY += 0.45;
   }
 
-  // --- SCORE BAR (compact inline layout) ---
-  const scoreY = 4.7;
+  // --- SCORE BAR (positioned dynamically after content) ---
+  const scoreY = Math.max(leftY, rightY) + 0.2;
   const scoreItems = [
-    { label: 'Data', val: idea.feasibility?.dataReadiness || 0, color: PX.darkBlue },
-    { label: 'Tech', val: idea.feasibility?.technicalComplexity || 0, color: PX.darkBlue },
-    { label: 'Org', val: idea.feasibility?.orgReadiness || 0, color: PX.darkBlue },
-    { label: 'Time', val: idea.impact?.timeSaved || 0, color: PX.orange },
-    { label: 'Errors', val: idea.impact?.errorReduction || 0, color: PX.orange },
-    { label: 'Strategy', val: idea.impact?.strategicValue || 0, color: PX.orange },
+    { label: 'Data Readiness', val: idea.feasibility?.dataReadiness || 0, color: PX.darkBlue },
+    { label: 'Tech Complexity', val: idea.feasibility?.technicalComplexity || 0, color: PX.darkBlue },
+    { label: 'Org Readiness', val: idea.feasibility?.orgReadiness || 0, color: PX.darkBlue },
+    { label: 'Time Saved', val: idea.impact?.timeSaved || 0, color: PX.orange },
+    { label: 'Error Reduction', val: idea.impact?.errorReduction || 0, color: PX.orange },
+    { label: 'Strategic Value', val: idea.impact?.strategicValue || 0, color: PX.orange },
   ];
 
   // Divider
   slide.addShape(pptx.shapes.RECTANGLE, {
-    x: 0.5, y: scoreY - 0.1, w: 9, h: 0.01,
+    x: 0.5, y: scoreY, w: 9, h: 0.01,
     fill: { color: 'DDDDDD' },
   });
 
   // Feasibility / Impact labels
   slide.addText('FEASIBILITY', {
-    x: 0.5, y: scoreY, w: 4.2, h: 0.2,
+    x: 0.5, y: scoreY + 0.08, w: 4.2, h: 0.2,
     fontSize: 8, fontFace: 'Arial', bold: true, color: PX.darkBlue,
   });
   slide.addText('IMPACT', {
-    x: 5.0, y: scoreY, w: 4.5, h: 0.2,
+    x: 5.0, y: scoreY + 0.08, w: 4.5, h: 0.2,
     fontSize: 8, fontFace: 'Arial', bold: true, color: PX.orange,
   });
 
   scoreItems.forEach((item, i) => {
     const x = 0.5 + i * 1.5;
-    // Score circle (smaller)
+    // Score circle
     slide.addShape(pptx.shapes.OVAL, {
-      x: x + 0.3, y: scoreY + 0.22, w: 0.42, h: 0.42,
+      x: x + 0.3, y: scoreY + 0.3, w: 0.42, h: 0.42,
       fill: { color: item.color },
     });
     slide.addText(`${item.val}/5`, {
-      x: x + 0.3, y: scoreY + 0.22, w: 0.42, h: 0.42,
+      x: x + 0.3, y: scoreY + 0.3, w: 0.42, h: 0.42,
       fontSize: 9, fontFace: 'Arial', bold: true, color: PX.white,
       align: 'center', valign: 'middle',
     });
     // Label below
     slide.addText(item.label, {
-      x: x, y: scoreY + 0.66, w: 1.1, h: 0.22,
+      x: x, y: scoreY + 0.74, w: 1.1, h: 0.22,
       fontSize: 7, fontFace: 'Arial', color: PX.textLight,
       align: 'center', valign: 'top',
     });
   });
 
   // --- PITCH ---
+  const pitchY = scoreY + 1.05;
   if (idea.pitch) {
     slide.addShape(pptx.shapes.ROUNDED_RECTANGLE, {
-      x: 0.5, y: 5.65, w: 9, h: 0.55,
+      x: 0.5, y: pitchY, w: 9, h: 0.5,
       fill: { color: PX.lightGrey },
       rectRadius: 0.1,
     });
     slide.addText(`"${idea.pitch}"`, {
-      x: 0.7, y: 5.68, w: 8.6, h: 0.48,
+      x: 0.7, y: pitchY + 0.02, w: 8.6, h: 0.45,
       fontSize: 9, fontFace: 'Arial', italic: true, color: PX.darkBlue,
       valign: 'middle', shrinkText: true,
     });
@@ -411,8 +412,8 @@ function addMatrixSlide(pptx, allIdeas) {
     fontSize: 10, fontFace: 'Arial', color: PX.textLight,
   });
 
-  // Chart area dimensions (fits within slide with legend below)
-  const CX = 0.8, CY = 0.9, CW = 5.5, CH = 4.8;
+  // Chart area dimensions (max Y = CY+CH = 5.6, legend below ~6.0, footer at 7.08)
+  const CX = 0.8, CY = 1.0, CW = 5.2, CH = 4.6;
 
   // Build scatter data grouped by group name
   const groups = {};
