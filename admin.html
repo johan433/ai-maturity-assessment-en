@@ -55,8 +55,10 @@
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
   <script src="js/questions.js"></script>
   <script src="js/config.js"></script>
+  <script src="js/pptx-export.js"></script>
   <script>
     if (checkAdmin()) {
       document.getElementById('loginSection').classList.add('hidden');
@@ -129,6 +131,7 @@
               <a class="btn btn-blue" href="usecase-results.html?session=${s.code}" style="font-size:0.75rem;padding:6px 12px;">&#128161; Use Cases</a>
               <button class="btn btn-outline" onclick="copyLinks('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Copy Link</button>
               <button class="btn btn-outline" onclick="downloadCSV('${s.code}', '${s.name.replace(/'/g, "\\'")}')" style="font-size:0.75rem;padding:6px 12px;">CSV</button>
+              <button class="btn btn-blue" onclick="downloadPPTX('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">PPTX</button>
               <button class="btn btn-outline" onclick="clearSessionResponses('${s.code}')" style="font-size:0.75rem;padding:6px 12px;color:var(--orange);border-color:var(--orange);">Clear</button>
               <button class="btn btn-danger" onclick="deleteSession('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Delete</button>
             </div>
@@ -153,6 +156,27 @@
       navigator.clipboard.writeText(url).then(() => alert('Link copied!')).catch(() => {
         prompt('Copy link:', url);
       });
+    }
+
+    async function downloadPPTX(code) {
+      try {
+        const session = await getSession(code);
+        const submissions = await getUseCaseSubmissions(code);
+        if (submissions.length === 0) { alert('No use case data to export.'); return; }
+
+        const allIdeas = [];
+        submissions.forEach(s => {
+          (s.ideas || []).forEach(idea => {
+            allIdeas.push({ ...idea, groupName: s.groupName, department: s.department, members: s.members || [] });
+          });
+        });
+
+        if (allIdeas.length === 0) { alert('No ideas found.'); return; }
+        generateUseCasePPTX(session, allIdeas, submissions);
+      } catch (err) {
+        alert('PPTX export error: ' + err.message);
+        console.error(err);
+      }
     }
 
     async function downloadCSV(code, name) {
