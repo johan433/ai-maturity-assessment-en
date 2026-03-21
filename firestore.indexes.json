@@ -15,6 +15,14 @@
         { "fieldPath": "sessionCode", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "usecase_submissions_en",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sessionCode", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

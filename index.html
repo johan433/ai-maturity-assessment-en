@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Maturity Assessment — Praelexis</title>
+  <title>AI Assessment Platform — Praelexis</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -13,8 +13,8 @@
       <img src="img/praelexis-logo.png" alt="Praelexis">
       <img src="img/clearit-logo.png" alt="ClearIT Space">
     </div>
-    <h1>AI Maturity Assessment</h1>
-    <p>Determine your organisation's AI maturity level</p>
+    <h1>AI Assessment Platform</h1>
+    <p>Tools for AI readiness and opportunity discovery</p>
   </div>
 
   <div class="container">
@@ -23,24 +23,41 @@
       <a href="admin.html">Admin</a>
     </nav>
 
-    <!-- Enter Session Code -->
-    <div class="card card-accent">
-      <div class="card-header">Start Assessment</div>
-      <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
-        Enter the session code provided by your administrator.
-      </p>
-      <div class="form-group">
-        <label for="sessionCode">Session Code</label>
-        <input type="text" id="sessionCode" placeholder="e.g. ABC123" maxlength="6"
-               style="text-transform:uppercase;letter-spacing:2px;font-size:1.2rem;text-align:center;">
+    <!-- Module Selection -->
+    <div class="home-grid">
+      <a href="#" class="home-card" onclick="showJoinForm('maturity'); return false;">
+        <div class="icon">&#128202;</div>
+        <h3>AI Maturity Assessment</h3>
+        <p>Determine your organisation's AI maturity level across key dimensions</p>
+      </a>
+      <a href="#" class="home-card" onclick="showJoinForm('usecase'); return false;">
+        <div class="icon">&#128161;</div>
+        <h3>AI Use Case Discovery</h3>
+        <p>Brainstorm, capture and prioritise AI opportunities for your organisation</p>
+      </a>
+    </div>
+
+    <!-- Join Session -->
+    <div id="joinSection" class="hidden" style="margin-top:24px;">
+      <div class="card card-accent">
+        <div class="card-header" id="joinTitle">Join Session</div>
+        <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;" id="joinDesc">
+          Enter the session code provided by your administrator.
+        </p>
+        <div class="form-group">
+          <label for="sessionCode">Session Code</label>
+          <input type="text" id="sessionCode" placeholder="e.g. ABC123" maxlength="6"
+                 style="text-transform:uppercase;letter-spacing:2px;font-size:1.2rem;text-align:center;">
+        </div>
+        <div id="sessionError" class="message message-error"></div>
+        <div id="sessionInfo" class="message message-info"></div>
+        <button class="btn btn-primary btn-full" onclick="joinSession()">Join</button>
+        <button class="btn btn-outline btn-full mt-8" onclick="hideJoinForm()">Cancel</button>
       </div>
-      <div id="sessionError" class="message message-error"></div>
-      <div id="sessionInfo" class="message message-info"></div>
-      <button class="btn btn-primary btn-full" onclick="joinSession()">Join</button>
     </div>
 
     <div style="text-align:center;margin-top:40px;padding:20px;color:var(--text-secondary);font-size:0.8rem;">
-      &copy; Praelexis &mdash; AI Maturity Assessment
+      &copy; Praelexis &mdash; AI Assessment Platform
     </div>
   </div>
 
@@ -50,15 +67,34 @@
   <script src="js/questions.js"></script>
   <script src="js/config.js"></script>
   <script>
+    let selectedModule = '';
     const codeInput = document.getElementById('sessionCode');
     const errorDiv = document.getElementById('sessionError');
     const infoDiv = document.getElementById('sessionInfo');
 
-    // Allow Enter key
     codeInput.addEventListener('keydown', e => { if (e.key === 'Enter') joinSession(); });
-
-    // Auto-uppercase
     codeInput.addEventListener('input', () => { codeInput.value = codeInput.value.toUpperCase(); });
+
+    function showJoinForm(module) {
+      selectedModule = module;
+      document.getElementById('joinSection').classList.remove('hidden');
+      if (module === 'maturity') {
+        document.getElementById('joinTitle').textContent = 'Join AI Maturity Assessment';
+        document.getElementById('joinDesc').textContent = 'Enter the session code to start your AI maturity assessment.';
+      } else {
+        document.getElementById('joinTitle').textContent = 'Join AI Use Case Discovery';
+        document.getElementById('joinDesc').textContent = 'Enter the session code to start capturing AI use cases with your group.';
+      }
+      codeInput.value = '';
+      errorDiv.style.display = 'none';
+      infoDiv.style.display = 'none';
+      codeInput.focus();
+    }
+
+    function hideJoinForm() {
+      document.getElementById('joinSection').classList.add('hidden');
+      selectedModule = '';
+    }
 
     async function joinSession() {
       const code = codeInput.value.trim().toUpperCase();
@@ -82,7 +118,11 @@
           infoDiv.style.display = 'none';
           return;
         }
-        window.location.href = `assessment.html?session=${code}`;
+        if (selectedModule === 'maturity') {
+          window.location.href = `assessment.html?session=${code}`;
+        } else {
+          window.location.href = `usecase.html?session=${code}`;
+        }
       } catch (err) {
         errorDiv.textContent = 'Error: ' + err.message;
         errorDiv.style.display = 'block';
@@ -92,7 +132,9 @@
 
     // Check URL param
     const urlCode = getUrlParam('session');
-    if (urlCode) {
+    const urlModule = getUrlParam('module');
+    if (urlCode && urlModule) {
+      showJoinForm(urlModule);
       codeInput.value = urlCode.toUpperCase();
     }
   </script>

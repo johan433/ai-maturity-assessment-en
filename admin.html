@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard — AI Maturity Assessment</title>
+  <title>Admin Dashboard — AI Assessment Platform</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -94,29 +94,38 @@
           return;
         }
 
-        // Get response counts for each session
-        const counts = {};
+        // Get response counts AND use case counts for each session
+        const maturityCounts = {};
+        const usecaseCounts = {};
         for (const s of sessions) {
-          const snap = await db.collection(RESPONSES_COLLECTION)
+          const matSnap = await db.collection(RESPONSES_COLLECTION)
             .where('sessionCode', '==', s.code).get();
-          counts[s.code] = snap.size;
+          maturityCounts[s.code] = matSnap.size;
+
+          const ucSnap = await db.collection(USECASE_SUBMISSIONS_COLLECTION)
+            .where('sessionCode', '==', s.code).get();
+          usecaseCounts[s.code] = ucSnap.size;
         }
 
         container.innerHTML = sessions.map(s => {
-          const count = counts[s.code] || 0;
+          const matCount = maturityCounts[s.code] || 0;
+          const ucCount = usecaseCounts[s.code] || 0;
           const date = s.createdAt ? formatDate(s.createdAt) : '';
           return `<div class="session-row">
             <div class="session-info">
               <div class="session-code">${s.code}</div>
               <div class="session-name">${s.name}</div>
               <div class="session-org">${s.organisation}</div>
-              <div class="session-meta">${count} Participants · Created: ${date}</div>
+              <div class="session-meta">
+                &#128202; ${matCount} Maturity · &#128161; ${ucCount} Use Case Groups · Created: ${date}
+              </div>
             </div>
             <div class="session-actions">
-              <a class="btn btn-blue" href="results.html?session=${s.code}" style="font-size:0.75rem;padding:6px 12px;">Results</a>
-              <button class="btn btn-outline" onclick="copySessionLink('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Copy Link</button>
+              <a class="btn btn-blue" href="results.html?session=${s.code}" style="font-size:0.75rem;padding:6px 12px;">&#128202; Maturity</a>
+              <a class="btn btn-blue" href="usecase-results.html?session=${s.code}" style="font-size:0.75rem;padding:6px 12px;">&#128161; Use Cases</a>
+              <button class="btn btn-outline" onclick="copyLinks('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Copy Links</button>
               <button class="btn btn-outline" onclick="downloadCSV('${s.code}', '${s.name.replace(/'/g, "\\'")}')" style="font-size:0.75rem;padding:6px 12px;">CSV</button>
-              <button class="btn btn-outline" onclick="clearSessionResponses('${s.code}')" style="font-size:0.75rem;padding:6px 12px;color:var(--orange);border-color:var(--orange);">Clear (Data)</button>
+              <button class="btn btn-outline" onclick="clearSessionResponses('${s.code}')" style="font-size:0.75rem;padding:6px 12px;color:var(--orange);border-color:var(--orange);">Clear</button>
               <button class="btn btn-danger" onclick="deleteSession('${s.code}')" style="font-size:0.75rem;padding:6px 12px;">Delete</button>
             </div>
           </div>`;
@@ -125,6 +134,16 @@
       } catch (err) {
         container.innerHTML = `<div class="card"><p class="message-error" style="display:block">Error: ${err.message}</p></div>`;
       }
+    }
+
+    function copyLinks(code) {
+      const base = window.location.origin + window.location.pathname.replace('admin.html', '');
+      const maturityUrl = `${base}assessment.html?session=${code}`;
+      const usecaseUrl = `${base}usecase.html?session=${code}`;
+      const text = `AI Maturity Assessment:\n${maturityUrl}\n\nAI Use Case Discovery:\n${usecaseUrl}`;
+      navigator.clipboard.writeText(text).then(() => alert('Both links copied!')).catch(() => {
+        prompt('Copy links:', text);
+      });
     }
 
     function copySessionLink(code) {
@@ -137,8 +156,14 @@
     async function downloadCSV(code, name) {
       try {
         const responses = await getResponses(code);
-        if (responses.length === 0) { alert('No responses available.'); return; }
-        exportMaturityCSV(name, responses);
+        if (responses.length > 0) exportMaturityCSV(name, responses);
+
+        const submissions = await getUseCaseSubmissions(code);
+        if (submissions.length > 0) exportUseCaseCSV(name, submissions);
+
+        if (responses.length === 0 && submissions.length === 0) {
+          alert('No data available for export.');
+        }
       } catch (err) {
         alert('Export error: ' + err.message);
       }

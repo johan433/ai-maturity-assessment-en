@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Use Case Results — AI Assessment Platform</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>AI Use Case Discovery — Results</h1>
+    <p id="sessionLabel"></p>
+  </div>
+
+  <div class="container-wide">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+
+    <div id="loadingDiv" class="loading"><div class="spinner"></div><p>Loading results...</p></div>
+
+    <div id="resultsContent" class="hidden">
+
+      <!-- Summary Cards -->
+      <div id="summaryCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px;"></div>
+
+      <!-- Priority Matrix -->
+      <div class="card card-accent">
+        <div class="card-header">Priority Matrix</div>
+        <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:16px;">
+          Feasibility vs Impact — top-right quadrant = highest priority ("Quick Wins" and "Strategic Bets")
+        </p>
+        <div style="position:relative;max-width:600px;margin:0 auto;">
+          <canvas id="matrixChart" style="width:100%;"></canvas>
+        </div>
+        <div id="matrixLegend" style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;justify-content:center;"></div>
+      </div>
+
+      <!-- Sort/Filter -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:20px 0;align-items:center;">
+        <span style="font-size:0.85rem;font-weight:600;color:var(--text-secondary);">Sort by:</span>
+        <button class="btn btn-blue" style="font-size:0.8rem;padding:6px 14px;" onclick="sortIdeas('combined')" id="sort_combined">Combined Score</button>
+        <button class="btn btn-outline" style="font-size:0.8rem;padding:6px 14px;" onclick="sortIdeas('feasibility')" id="sort_feasibility">Feasibility</button>
+        <button class="btn btn-outline" style="font-size:0.8rem;padding:6px 14px;" onclick="sortIdeas('impact')" id="sort_impact">Impact</button>
+        <button class="btn btn-outline" style="font-size:0.8rem;padding:6px 14px;" onclick="sortIdeas('group')" id="sort_group">Group</button>
+      </div>
+
+      <!-- Ideas List -->
+      <div id="ideasList"></div>
+
+      <!-- Export -->
+      <div style="text-align:center;margin:24px 0;">
+        <button class="btn btn-blue" onclick="doExport()">&#128229; Export CSV</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    let sessionCode = '';
+    let sessionData = null;
+    let allSubmissions = [];
+    let allIdeas = []; // flattened
+    let matrixChart = null;
+    let currentSort = 'combined';
+
+    (async function init() {
+      sessionCode = getUrlParam('session');
+      if (!sessionCode) { alert('No session code.'); window.location.href = 'admin.html'; return; }
+      sessionCode = sessionCode.toUpperCase();
+
+      try {
+        sessionData = await getSession(sessionCode);
+        if (!sessionData) { alert('Session not found.'); window.location.href = 'admin.html'; return; }
+        document.getElementById('sessionLabel').textContent = `${sessionData.organisation} — ${sessionData.name}`;
+
+        allSubmissions = await getUseCaseSubmissions(sessionCode);
+        document.getElementById('loadingDiv').classList.add('hidden');
+        document.getElementById('resultsContent').classList.remove('hidden');
+
+        if (allSubmissions.length === 0) {
+          document.getElementById('resultsContent').innerHTML =
+            '<div class="card text-center"><p style="color:var(--text-secondary);">No use case submissions yet.</p></div>';
+          return;
+        }
+
+        // Flatten ideas with group info
+        allIdeas = [];
+        allSubmissions.forEach(s => {
+          (s.ideas || []).forEach((idea, idx) => {
+            allIdeas.push({
+              ...idea,
+              groupName: s.groupName,
+              department: s.department,
+              members: s.members || [],
+              submissionId: s.id,
+              ideaIndex: idx
+            });
+          });
+        });
+
+        renderResults();
+      } catch (err) {
+        document.getElementById('loadingDiv').innerHTML =
+          `<p style="color:var(--danger);">Error: ${err.message}</p>`;
+      }
+    })();
+
+    function renderResults() {
+      renderSummaryCards();
+      renderPriorityMatrix();
+      renderIdeasList();
+    }
+
+    /* ---- Summary Cards ---- */
+    function renderSummaryCards() {
+      const totalGroups = allSubmissions.length;
+      const totalIdeas = allIdeas.length;
+      const totalMembers = new Set(allSubmissions.flatMap(s => s.members || [])).size;
+      const avgCombined = allIdeas.length > 0
+        ? (allIdeas.reduce((s, i) => s + (i.combinedScore || 0), 0) / allIdeas.length).toFixed(1)
+        : 0;
+      const topIdea = allIdeas.reduce((best, i) => (i.combinedScore || 0) > (best.combinedScore || 0) ? i : best, allIdeas[0]);
+
+      document.getElementById('summaryCards').innerHTML = `
+        <div class="score-card">
+          <div class="score-value">${totalGroups}</div>
+          <div class="score-label">Groups</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value">${totalIdeas}</div>
+          <div class="score-label">Ideas</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value">${totalMembers}</div>
+          <div class="score-label">Participants</div>
+        </div>
+        <div class="score-card">
+          <div class="score-value">${avgCombined}</div>
+          <div class="score-label">Avg Score (/30)</div>
+        </div>
+      `;
+    }
+
+    /* ---- Priority Matrix (Scatter Chart) ---- */
+    function renderPriorityMatrix() {
+      const colors = [
+        '#ce5928', '#104984', '#059669', '#7c3aed', '#d97706',
+        '#0891b2', '#be185d', '#4f46e5', '#16a34a', '#dc2626'
+      ];
+
+      // One dataset per group
+      const groups = {};
+      allIdeas.forEach((idea, idx) => {
+        if (!groups[idea.groupName]) groups[idea.groupName] = [];
+        groups[idea.groupName].push({ idea, idx });
+      });
+
+      const datasets = Object.entries(groups).map(([groupName, items], gi) => ({
+        label: groupName,
+        data: items.map(({ idea, idx }) => ({
+          x: idea.feasibility?.total || 0,
+          y: idea.impact?.total || 0,
+          name: idea.name,
+          idx: idx + 1
+        })),
+        backgroundColor: colors[gi % colors.length],
+        borderColor: colors[gi % colors.length],
+        pointRadius: 10,
+        pointHoverRadius: 14,
+      }));
+
+      const ctx = document.getElementById('matrixChart').getContext('2d');
+      if (matrixChart) matrixChart.destroy();
+
+      matrixChart = new Chart(ctx, {
+        type: 'scatter',
+        data: { datasets },
+        options: {
+          responsive: true,
+          aspectRatio: 1,
+          scales: {
+            x: {
+              title: { display: true, text: 'FEASIBILITY (/15)', font: { weight: 'bold', size: 12 } },
+              min: 0, max: 15, ticks: { stepSize: 3 },
+              grid: { color: 'rgba(0,0,0,0.06)' }
+            },
+            y: {
+              title: { display: true, text: 'IMPACT (/15)', font: { weight: 'bold', size: 12 } },
+              min: 0, max: 15, ticks: { stepSize: 3 },
+              grid: { color: 'rgba(0,0,0,0.06)' }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const d = ctx.raw;
+                  return `${d.name} — F:${d.x} I:${d.y} (${d.x + d.y}/30)`;
+                }
+              }
+            },
+            legend: {
+              position: 'bottom',
+              labels: { usePointStyle: true, pointStyle: 'circle', padding: 16 }
+            },
+            // Quadrant lines
+            annotation: undefined
+          }
+        },
+        plugins: [{
+          id: 'quadrantLines',
+          beforeDraw(chart) {
+            const { ctx, scales: { x, y } } = chart;
+            const midX = x.getPixelForValue(7.5);
+            const midY = y.getPixelForValue(7.5);
+
+            ctx.save();
+            ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([6, 4]);
+
+            // Vertical line
+            ctx.beginPath();
+            ctx.moveTo(midX, y.top);
+            ctx.lineTo(midX, y.bottom);
+            ctx.stroke();
+
+            // Horizontal line
+            ctx.beginPath();
+            ctx.moveTo(x.left, midY);
+            ctx.lineTo(x.right, midY);
+            ctx.stroke();
+
+            // Quadrant labels
+            ctx.setLineDash([]);
+            ctx.font = '11px Source Sans 3, sans-serif';
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.textAlign = 'center';
+
+            const pad = 30;
+            ctx.fillText('RECONSIDER', (x.left + midX) / 2, y.bottom - pad);
+            ctx.fillText('LONG-TERM BET', (midX + x.right) / 2, y.bottom - pad);
+            ctx.fillText('MONITOR', (x.left + midX) / 2, y.top + pad);
+            ctx.fillText('QUICK WIN', (midX + x.right) / 2, y.top + pad);
+
+            ctx.restore();
+          }
+        }]
+      });
+    }
+
+    /* ---- Ideas List ---- */
+    function sortIdeas(by) {
+      currentSort = by;
+      ['combined', 'feasibility', 'impact', 'group'].forEach(s => {
+        const btn = document.getElementById(`sort_${s}`);
+        if (btn) {
+          btn.className = s === by ? 'btn btn-blue' : 'btn btn-outline';
+          btn.style.fontSize = '0.8rem';
+          btn.style.padding = '6px 14px';
+        }
+      });
+      renderIdeasList();
+    }
+
+    function renderIdeasList() {
+      const sorted = [...allIdeas];
+
+      switch (currentSort) {
+        case 'combined':
+          sorted.sort((a, b) => (b.combinedScore || 0) - (a.combinedScore || 0));
+          break;
+        case 'feasibility':
+          sorted.sort((a, b) => (b.feasibility?.total || 0) - (a.feasibility?.total || 0));
+          break;
+        case 'impact':
+          sorted.sort((a, b) => (b.impact?.total || 0) - (a.impact?.total || 0));
+          break;
+        case 'group':
+          sorted.sort((a, b) => a.groupName.localeCompare(b.groupName));
+          break;
+      }
+
+      document.getElementById('ideasList').innerHTML = sorted.map((idea, rank) => {
+        const feas = idea.feasibility?.total || 0;
+        const imp = idea.impact?.total || 0;
+        const combined = idea.combinedScore || 0;
+        const priority = getPriorityLabel(feas, imp);
+
+        return `<div class="usecase-card">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;">
+            <div>
+              <div class="idea-name">${currentSort === 'combined' ? `#${rank + 1} ` : ''}${idea.name || 'Untitled'}</div>
+              <div class="idea-meta">${idea.groupName} · ${idea.department} · ${idea.members.join(', ')}</div>
+            </div>
+            <div class="idea-scores">
+              <span class="idea-score-badge feasibility">F: ${feas}/15</span>
+              <span class="idea-score-badge impact">I: ${imp}/15</span>
+              <span class="idea-score-badge combined">${combined}/30</span>
+            </div>
+          </div>
+
+          ${idea.problemDescription ? `
+          <div style="margin-top:12px;">
+            <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Problem</div>
+            <p style="font-size:0.9rem;color:var(--text);margin:0;">${idea.problemDescription}</p>
+            ${idea.whoAffected ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin:4px 0 0;">Affected: ${idea.whoAffected}</p>` : ''}
+            ${idea.frequency ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin:2px 0 0;">Frequency: ${idea.frequency}${idea.timePerCycle ? ` · ${idea.timePerCycle} per cycle` : ''}</p>` : ''}
+          </div>` : ''}
+
+          ${idea.aiApproach ? `
+          <div style="margin-top:10px;">
+            <div style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">AI Opportunity</div>
+            <p style="font-size:0.9rem;color:var(--text);margin:0;">${idea.aiApproach}</p>
+            ${idea.dataAvailable ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin:4px 0 0;">Data: ${idea.dataAvailable}</p>` : ''}
+            ${idea.successCriteria ? `<p style="font-size:0.85rem;color:var(--text-secondary);margin:2px 0 0;">Success: ${idea.successCriteria}</p>` : ''}
+          </div>` : ''}
+
+          ${idea.pitch ? `
+          <div style="margin-top:10px;padding:10px 14px;background:var(--bg);border-radius:8px;font-size:0.9rem;font-style:italic;color:var(--blue);">
+            "${idea.pitch}"
+          </div>` : ''}
+
+          <div style="margin-top:10px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:0.8rem;">
+              <span style="padding:3px 10px;border-radius:12px;background:var(--bg);color:var(--text-secondary);">
+                Data: ${idea.feasibility?.dataReadiness || 0}/5
+              </span>
+              <span style="padding:3px 10px;border-radius:12px;background:var(--bg);color:var(--text-secondary);">
+                Tech: ${idea.feasibility?.technicalComplexity || 0}/5
+              </span>
+              <span style="padding:3px 10px;border-radius:12px;background:var(--bg);color:var(--text-secondary);">
+                Org: ${idea.feasibility?.orgReadiness || 0}/5
+              </span>
+              <span style="padding:3px 10px;border-radius:12px;background:var(--bg);color:var(--text-secondary);">
+                Time: ${idea.impact?.timeSaved || 0}/5
+              </span>
+              <span style="padding:3px 10px;border-radius:12px;background:var(--bg);color:var(--text-secondary);">
+                Errors: ${idea.impact?.errorReduction || 0}/5
+              </span>
+              <span style="padding:3px 10px;border-radius:12px;background:var(--bg);color:var(--text-secondary);">
+                Strategy: ${idea.impact?.strategicValue || 0}/5
+              </span>
+            </div>
+          </div>
+
+          <div style="margin-top:8px;">
+            <span style="font-size:0.8rem;font-weight:600;padding:4px 12px;border-radius:12px;${getPriorityStyle(priority)}">${priority}</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    function getPriorityLabel(feasibility, impact) {
+      if (feasibility > 7.5 && impact > 7.5) return 'Quick Win';
+      if (feasibility <= 7.5 && impact > 7.5) return 'Monitor';
+      if (feasibility > 7.5 && impact <= 7.5) return 'Long-term Bet';
+      return 'Reconsider';
+    }
+
+    function getPriorityStyle(label) {
+      switch (label) {
+        case 'Quick Win': return 'background:#ecfdf5;color:#059669;';
+        case 'Monitor': return 'background:#fdf2ec;color:#ce5928;';
+        case 'Long-term Bet': return 'background:#edf4fb;color:#104984;';
+        default: return 'background:#f4f5f6;color:#999;';
+      }
+    }
+
+    /* ---- Export ---- */
+    function doExport() {
+      const name = sessionData ? `${sessionData.organisation}_${sessionData.name}` : sessionCode;
+      exportUseCaseCSV(name, allSubmissions);
+    }
+  </script>
+</body>
+</html>

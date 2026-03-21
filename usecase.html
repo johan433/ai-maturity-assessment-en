@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Use Case Discovery</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logos">
+      <img src="img/praelexis-logo.png" alt="Praelexis">
+      <img src="img/clearit-logo.png" alt="ClearIT Space">
+    </div>
+    <h1>AI Use Case Discovery</h1>
+    <p id="sessionLabel"></p>
+  </div>
+
+  <div class="container">
+    <nav class="nav">
+      <a href="index.html">Home</a>
+      <a href="admin.html">Admin</a>
+    </nav>
+
+    <!-- Step 1: Group Info -->
+    <div id="step-group">
+      <div class="card card-accent">
+        <div class="card-header">Group Information</div>
+        <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
+          Enter your group details. You can submit ideas as a team.
+        </p>
+        <div class="form-group">
+          <label for="groupName">Group / Team Name *</label>
+          <input type="text" id="groupName" placeholder="e.g. Operations Team, Table 3">
+        </div>
+        <div class="form-group">
+          <label for="department">Department *</label>
+          <input type="text" id="department" placeholder="e.g. Finance, IT, Operations">
+        </div>
+        <div class="form-group">
+          <label>Group Members *</label>
+          <div id="membersContainer">
+            <div class="member-row">
+              <input type="text" class="member-input" placeholder="Member name">
+              <button class="btn-icon" onclick="removeMember(this)" title="Remove">&times;</button>
+            </div>
+          </div>
+          <button class="btn btn-outline" style="font-size:0.85rem;padding:8px 16px;margin-top:8px;" onclick="addMember()">+ Add Member</button>
+        </div>
+        <div id="groupError" class="message message-error"></div>
+        <button class="btn btn-primary btn-full" onclick="startDiscovery()">Continue</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Guiding Questions (collapsible) + Ideas -->
+    <div id="step-ideas" class="hidden">
+
+      <!-- Guiding Questions -->
+      <div class="card card-blue" style="cursor:pointer;" onclick="toggleGuide()">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="card-header" style="margin-bottom:0;">Six Questions to Find AI Opportunities</div>
+          <span id="guideToggle" style="font-size:1.2rem;color:var(--blue);transition:transform 0.2s;">&#9660;</span>
+        </div>
+        <div id="guideContent" class="hidden" style="margin-top:16px;">
+          <div class="guide-item">
+            <div class="guide-number">1</div>
+            <div>
+              <strong>Find the Business Value</strong>
+              <p>"Will this idea make money, save money, or save face (fewer errors, better compliance, reduced risk)?"</p>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-number">2</div>
+            <div>
+              <strong>Find the Hidden Insights</strong>
+              <p>"What data do you collect but never really analyse? Where would a prediction, trend, or early warning change how you make decisions?"</p>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-number">3</div>
+            <div>
+              <strong>Find the Pain</strong>
+              <p>"What process causes the most frustration, errors, or overtime in your team?"</p>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-number">4</div>
+            <div>
+              <strong>Find the Repetition</strong>
+              <p>"What do you spend most of your time on that follows roughly the same steps every time?"</p>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-number">5</div>
+            <div>
+              <strong>Find the Bottlenecks</strong>
+              <p>"Where do things get stuck, bounce between people, or sit waiting for someone to act?"</p>
+            </div>
+          </div>
+          <div class="guide-item">
+            <div class="guide-number">6</div>
+            <div>
+              <strong>Find the Rekeying</strong>
+              <p>"Where do you copy information from one system or document into another?"</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ideas Container -->
+      <div id="ideasContainer"></div>
+
+      <!-- Add Idea Button -->
+      <div style="text-align:center;margin:20px 0;">
+        <button class="btn btn-outline" onclick="addIdea()" id="addIdeaBtn">+ Add Another Idea</button>
+      </div>
+
+      <!-- Submit -->
+      <div id="submitError" class="message message-error"></div>
+      <div style="display:flex;gap:12px;margin-top:16px;">
+        <button class="btn btn-outline" onclick="goBackToGroup()">Back</button>
+        <button class="btn btn-primary" style="flex:1" onclick="submitAll()">Submit All Ideas</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Completion -->
+    <div id="step-complete" class="hidden">
+      <div class="completion">
+        <div class="checkmark">&#10004;&#65039;</div>
+        <h2>Ideas Submitted!</h2>
+        <p style="color:var(--text-secondary);margin-bottom:8px;">Your AI use case ideas have been successfully captured.</p>
+        <div id="completionSummary" style="margin:24px 0;"></div>
+        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+          <a href="index.html" class="btn btn-outline">Back to Home</a>
+          <button class="btn btn-blue" onclick="location.reload()">Submit More Ideas</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="js/questions.js"></script>
+  <script src="js/config.js"></script>
+  <script>
+    /* ---- State ---- */
+    let sessionCode = '';
+    let sessionData = null;
+    let ideaCount = 0;
+
+    /* ---- Init ---- */
+    (async function init() {
+      sessionCode = getUrlParam('session');
+      if (!sessionCode) { window.location.href = 'index.html'; return; }
+      sessionCode = sessionCode.toUpperCase();
+
+      try {
+        sessionData = await getSession(sessionCode);
+        if (!sessionData) { alert('Session not found.'); window.location.href = 'index.html'; return; }
+        document.getElementById('sessionLabel').textContent = `${sessionData.organisation} — ${sessionData.name}`;
+      } catch (err) {
+        alert('Error: ' + err.message);
+        window.location.href = 'index.html';
+      }
+    })();
+
+    /* ---- Members ---- */
+    function addMember() {
+      const container = document.getElementById('membersContainer');
+      const row = document.createElement('div');
+      row.className = 'member-row';
+      row.innerHTML = `
+        <input type="text" class="member-input" placeholder="Member name">
+        <button class="btn-icon" onclick="removeMember(this)" title="Remove">&times;</button>
+      `;
+      container.appendChild(row);
+      row.querySelector('input').focus();
+    }
+
+    function removeMember(btn) {
+      const container = document.getElementById('membersContainer');
+      if (container.children.length > 1) {
+        btn.closest('.member-row').remove();
+      }
+    }
+
+    /* ---- Step Navigation ---- */
+    function startDiscovery() {
+      const groupName = document.getElementById('groupName').value.trim();
+      const department = document.getElementById('department').value.trim();
+      const members = getMembers();
+
+      if (!groupName || !department || members.length === 0) {
+        showError('groupError', 'Please fill in all fields and add at least one member.');
+        return;
+      }
+
+      document.getElementById('step-group').classList.add('hidden');
+      document.getElementById('step-ideas').classList.remove('hidden');
+
+      if (ideaCount === 0) addIdea();
+    }
+
+    function goBackToGroup() {
+      document.getElementById('step-ideas').classList.add('hidden');
+      document.getElementById('step-group').classList.remove('hidden');
+    }
+
+    function getMembers() {
+      return Array.from(document.querySelectorAll('.member-input'))
+        .map(input => input.value.trim())
+        .filter(v => v.length > 0);
+    }
+
+    /* ---- Guide Toggle ---- */
+    function toggleGuide() {
+      const content = document.getElementById('guideContent');
+      const toggle = document.getElementById('guideToggle');
+      content.classList.toggle('hidden');
+      toggle.style.transform = content.classList.contains('hidden') ? '' : 'rotate(180deg)';
+    }
+
+    /* ---- Idea Management ---- */
+    function addIdea() {
+      ideaCount++;
+      const n = ideaCount;
+      const container = document.getElementById('ideasContainer');
+
+      const ideaDiv = document.createElement('div');
+      ideaDiv.className = 'idea-block';
+      ideaDiv.id = `idea_${n}`;
+      ideaDiv.innerHTML = `
+        <div class="idea-header">
+          <div class="idea-number">Idea #${n}</div>
+          ${n > 1 ? `<button class="btn-icon danger" onclick="removeIdea(${n})" title="Remove idea">&times;</button>` : ''}
+        </div>
+
+        <div class="form-group">
+          <label>Idea Name / Title *</label>
+          <input type="text" id="idea_name_${n}" placeholder="Short descriptive name for this use case">
+        </div>
+
+        <!-- Section 1: The Problem -->
+        <div class="idea-section">
+          <div class="idea-section-title">1. What's the Problem?</div>
+
+          <div class="form-group">
+            <label>Describe the current pain point, inefficiency, or manual process *</label>
+            <textarea id="idea_problem_${n}" rows="3" placeholder="Show the steps involved, what goes wrong, what takes too long..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Who is affected? (roles / teams / customers) *</label>
+            <input type="text" id="idea_affected_${n}" placeholder="e.g. Claims processors, customer service team">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label>How often?</label>
+              <select id="idea_frequency_${n}">
+                <option value="">Select...</option>
+                <option value="Multiple times daily">Multiple times daily</option>
+                <option value="Daily">Daily</option>
+                <option value="Weekly">Weekly</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Ad hoc">Ad hoc</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>Time per cycle?</label>
+              <input type="text" id="idea_time_${n}" placeholder="e.g. 2 hours, 30 min">
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: AI Opportunity -->
+        <div class="idea-section">
+          <div class="idea-section-title">2. The AI Opportunity</div>
+
+          <div class="form-group">
+            <label>How could AI help? *</label>
+            <div class="ai-approach-tags" id="approach_${n}">
+              <span class="approach-tag" onclick="toggleApproachTag(this)">Automate</span>
+              <span class="approach-tag" onclick="toggleApproachTag(this)">Assist</span>
+              <span class="approach-tag" onclick="toggleApproachTag(this)">Augment</span>
+              <span class="approach-tag" onclick="toggleApproachTag(this)">Analyse</span>
+              <span class="approach-tag" onclick="toggleApproachTag(this)">Predict</span>
+              <span class="approach-tag" onclick="toggleApproachTag(this)">Detect</span>
+              <span class="approach-tag" onclick="toggleApproachTag(this)">See / Read</span>
+            </div>
+            <textarea id="idea_ai_${n}" rows="2" placeholder="Describe how AI would be applied..." style="margin-top:8px;"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>What data or inputs are available?</label>
+            <input type="text" id="idea_data_${n}" placeholder="e.g. Documents, images, sensor readings, historical records, logs">
+          </div>
+
+          <div class="form-group">
+            <label>What would success look like?</label>
+            <textarea id="idea_success_${n}" rows="2" placeholder="Describe the desired outcome..."></textarea>
+          </div>
+        </div>
+
+        <!-- Section 3: Score It -->
+        <div class="idea-section">
+          <div class="idea-section-title">3. Score It</div>
+
+          <div class="score-grid">
+            <div class="score-column">
+              <div class="score-column-header feasibility">FEASIBILITY <span style="font-weight:400;">(1 = hard, 5 = easy)</span></div>
+              <div class="score-row">
+                <label>Data readiness</label>
+                <div class="score-dots" id="score_dataReadiness_${n}">
+                  ${renderScoreDots(n, 'dataReadiness')}
+                </div>
+              </div>
+              <div class="score-row">
+                <label>Technical complexity</label>
+                <div class="score-dots" id="score_technicalComplexity_${n}">
+                  ${renderScoreDots(n, 'technicalComplexity')}
+                </div>
+              </div>
+              <div class="score-row">
+                <label>Organisational readiness</label>
+                <div class="score-dots" id="score_orgReadiness_${n}">
+                  ${renderScoreDots(n, 'orgReadiness')}
+                </div>
+              </div>
+              <div class="score-total">Feasibility: <span id="feasTotal_${n}">0</span> / 15</div>
+            </div>
+
+            <div class="score-column">
+              <div class="score-column-header impact">IMPACT <span style="font-weight:400;">(1 = low, 5 = high)</span></div>
+              <div class="score-row">
+                <label>Time saved</label>
+                <div class="score-dots" id="score_timeSaved_${n}">
+                  ${renderScoreDots(n, 'timeSaved')}
+                </div>
+              </div>
+              <div class="score-row">
+                <label>Error reduction</label>
+                <div class="score-dots" id="score_errorReduction_${n}">
+                  ${renderScoreDots(n, 'errorReduction')}
+                </div>
+              </div>
+              <div class="score-row">
+                <label>Strategic value</label>
+                <div class="score-dots" id="score_strategicValue_${n}">
+                  ${renderScoreDots(n, 'strategicValue')}
+                </div>
+              </div>
+              <div class="score-total">Impact: <span id="impactTotal_${n}">0</span> / 15</div>
+            </div>
+          </div>
+
+          <div class="combined-score">
+            Combined: <span id="combinedTotal_${n}">0</span> / 30
+          </div>
+        </div>
+
+        <!-- Section 4: Pitch -->
+        <div class="idea-section">
+          <div class="idea-section-title">4. Your 30-Second Pitch</div>
+          <div class="pitch-template">
+            <span class="pitch-label">As a</span>
+            <input type="text" id="idea_pitch_role_${n}" placeholder="role" class="pitch-input">
+            <span class="pitch-label">, I need</span>
+            <input type="text" id="idea_pitch_capability_${n}" placeholder="AI capability" class="pitch-input" style="min-width:200px;">
+            <span class="pitch-label">so that</span>
+            <input type="text" id="idea_pitch_outcome_${n}" placeholder="business outcome" class="pitch-input" style="min-width:200px;">
+          </div>
+        </div>
+      `;
+
+      container.appendChild(ideaDiv);
+      ideaDiv.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function removeIdea(n) {
+      const el = document.getElementById(`idea_${n}`);
+      if (el) el.remove();
+    }
+
+    function renderScoreDots(ideaNum, field) {
+      let html = '';
+      for (let i = 1; i <= 5; i++) {
+        html += `<span class="score-dot" data-idea="${ideaNum}" data-field="${field}" data-val="${i}"
+                  onclick="selectScore(${ideaNum}, '${field}', ${i})">${i}</span>`;
+      }
+      return html;
+    }
+
+    function selectScore(ideaNum, field, val) {
+      const container = document.getElementById(`score_${field}_${ideaNum}`);
+      container.querySelectorAll('.score-dot').forEach(dot => {
+        dot.classList.toggle('active', parseInt(dot.dataset.val) <= val);
+      });
+      dot_data = dot_data || {};
+      if (!dot_data[ideaNum]) dot_data[ideaNum] = {};
+      dot_data[ideaNum][field] = val;
+      updateTotals(ideaNum);
+    }
+
+    let dot_data = {};
+
+    function updateTotals(n) {
+      const d = dot_data[n] || {};
+      const feasibility = (d.dataReadiness || 0) + (d.technicalComplexity || 0) + (d.orgReadiness || 0);
+      const impact = (d.timeSaved || 0) + (d.errorReduction || 0) + (d.strategicValue || 0);
+      const el = (id) => document.getElementById(id);
+      if (el(`feasTotal_${n}`)) el(`feasTotal_${n}`).textContent = feasibility;
+      if (el(`impactTotal_${n}`)) el(`impactTotal_${n}`).textContent = impact;
+      if (el(`combinedTotal_${n}`)) el(`combinedTotal_${n}`).textContent = feasibility + impact;
+    }
+
+    function toggleApproachTag(el) {
+      el.classList.toggle('selected');
+    }
+
+    /* ---- Collect Idea Data ---- */
+    function collectIdeas() {
+      const ideaBlocks = document.querySelectorAll('.idea-block');
+      const ideas = [];
+
+      ideaBlocks.forEach(block => {
+        const n = block.id.replace('idea_', '');
+        const name = val(`idea_name_${n}`);
+        if (!name) return; // skip empty ideas
+
+        const approaches = [];
+        block.querySelectorAll('.approach-tag.selected').forEach(tag => approaches.push(tag.textContent.trim()));
+
+        const pitchRole = val(`idea_pitch_role_${n}`);
+        const pitchCap = val(`idea_pitch_capability_${n}`);
+        const pitchOut = val(`idea_pitch_outcome_${n}`);
+        const pitch = (pitchRole && pitchCap && pitchOut)
+          ? `As a ${pitchRole}, I need ${pitchCap} so that ${pitchOut}.`
+          : '';
+
+        const scores = dot_data[n] || {};
+
+        ideas.push({
+          name,
+          problemDescription: val(`idea_problem_${n}`),
+          whoAffected: val(`idea_affected_${n}`),
+          frequency: document.getElementById(`idea_frequency_${n}`)?.value || '',
+          timePerCycle: val(`idea_time_${n}`),
+          aiApproach: approaches.join(', ') + (val(`idea_ai_${n}`) ? ' — ' + val(`idea_ai_${n}`) : ''),
+          dataAvailable: val(`idea_data_${n}`),
+          successCriteria: val(`idea_success_${n}`),
+          dataReadiness: scores.dataReadiness || 0,
+          technicalComplexity: scores.technicalComplexity || 0,
+          orgReadiness: scores.orgReadiness || 0,
+          timeSaved: scores.timeSaved || 0,
+          errorReduction: scores.errorReduction || 0,
+          strategicValue: scores.strategicValue || 0,
+          pitch
+        });
+      });
+
+      return ideas;
+    }
+
+    function val(id) {
+      const el = document.getElementById(id);
+      return el ? el.value.trim() : '';
+    }
+
+    /* ---- Submit ---- */
+    async function submitAll() {
+      const ideas = collectIdeas();
+
+      if (ideas.length === 0) {
+        showError('submitError', 'Please fill in at least one idea with a name.');
+        return;
+      }
+
+      // Validate required fields on first idea at minimum
+      const first = ideas[0];
+      if (!first.problemDescription || !first.whoAffected) {
+        showError('submitError', 'Please fill in the problem description and who is affected for each idea.');
+        return;
+      }
+
+      const groupInfo = {
+        groupName: document.getElementById('groupName').value.trim(),
+        department: document.getElementById('department').value.trim(),
+        members: getMembers()
+      };
+
+      try {
+        await submitUseCases(sessionCode, groupInfo, ideas);
+        showCompletion(ideas);
+      } catch (err) {
+        showError('submitError', 'Error submitting: ' + err.message);
+      }
+    }
+
+    function showCompletion(ideas) {
+      document.getElementById('step-ideas').classList.add('hidden');
+      document.getElementById('step-complete').classList.remove('hidden');
+
+      const totalScore = ideas.reduce((sum, i) =>
+        sum + (i.dataReadiness || 0) + (i.technicalComplexity || 0) + (i.orgReadiness || 0) +
+        (i.timeSaved || 0) + (i.errorReduction || 0) + (i.strategicValue || 0), 0);
+
+      document.getElementById('completionSummary').innerHTML = `
+        <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
+          <div class="score-card" style="min-width:120px;">
+            <div class="score-value">${ideas.length}</div>
+            <div class="score-label">Ideas Submitted</div>
+          </div>
+          <div class="score-card" style="min-width:120px;">
+            <div class="score-value">${getMembers().length}</div>
+            <div class="score-label">Group Members</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <h3 style="font-size:1rem;margin-bottom:8px;">Ideas Captured:</h3>
+          ${ideas.map((idea, i) => `
+            <div style="background:var(--bg);padding:10px 16px;border-radius:8px;margin-bottom:6px;text-align:left;">
+              <strong>Idea ${i + 1}:</strong> ${idea.name}
+              <span style="float:right;color:var(--blue);font-weight:600;">${
+                (idea.dataReadiness || 0) + (idea.technicalComplexity || 0) + (idea.orgReadiness || 0) +
+                (idea.timeSaved || 0) + (idea.errorReduction || 0) + (idea.strategicValue || 0)
+              }/30</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    /* ---- Helpers ---- */
+    function showError(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg;
+      el.style.display = 'block';
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  </script>
+</body>
+</html>

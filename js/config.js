@@ -18,6 +18,7 @@ const db = firebase.firestore();
 // Collections (separate from German version to keep data distinct)
 const SESSIONS_COLLECTION = 'maturity_sessions_en';
 const RESPONSES_COLLECTION = 'maturity_responses_en';
+const USECASE_SUBMISSIONS_COLLECTION = 'usecase_submissions_en';
 
 // =====================
 // Admin Auth
@@ -223,6 +224,96 @@ async function clearSessionResponses(code) {
     alert('Error deleting responses: ' + err.message);
     console.error(err);
   }
+}
+
+// =====================
+// Use Case Submissions
+// =====================
+
+async function submitUseCases(sessionCode, groupInfo, ideas) {
+  const docRef = await db.collection(USECASE_SUBMISSIONS_COLLECTION).add({
+    sessionCode: sessionCode.toUpperCase(),
+    groupName: groupInfo.groupName,
+    department: groupInfo.department,
+    members: groupInfo.members,
+    ideas: ideas.map(idea => ({
+      name: idea.name,
+      problemDescription: idea.problemDescription,
+      whoAffected: idea.whoAffected,
+      frequency: idea.frequency,
+      timePerCycle: idea.timePerCycle,
+      aiApproach: idea.aiApproach,
+      dataAvailable: idea.dataAvailable,
+      successCriteria: idea.successCriteria,
+      feasibility: {
+        dataReadiness: Number(idea.dataReadiness) || 0,
+        technicalComplexity: Number(idea.technicalComplexity) || 0,
+        orgReadiness: Number(idea.orgReadiness) || 0,
+        total: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0)
+      },
+      impact: {
+        timeSaved: Number(idea.timeSaved) || 0,
+        errorReduction: Number(idea.errorReduction) || 0,
+        strategicValue: Number(idea.strategicValue) || 0,
+        total: (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0)
+      },
+      combinedScore: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0) +
+                      (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0),
+      pitch: idea.pitch
+    })),
+    ideaCount: ideas.length,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  return docRef.id;
+}
+
+async function getUseCaseSubmissions(sessionCode) {
+  const snapshot = await db.collection(USECASE_SUBMISSIONS_COLLECTION)
+    .where('sessionCode', '==', sessionCode.toUpperCase())
+    .orderBy('createdAt', 'asc')
+    .get();
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function deleteUseCaseSubmission(id) {
+  await db.collection(USECASE_SUBMISSIONS_COLLECTION).doc(id).delete();
+}
+
+function exportUseCaseCSV(sessionName, submissions) {
+  if (!submissions.length) { alert('No data to export.'); return; }
+
+  const headers = [
+    'Group', 'Department', 'Members',
+    'Idea Name', 'Problem', 'Who Affected', 'Frequency', 'Time/Cycle',
+    'AI Approach', 'Data Available', 'Success Criteria',
+    'Data Readiness', 'Technical Complexity', 'Org Readiness', 'Feasibility Total',
+    'Time Saved', 'Error Reduction', 'Strategic Value', 'Impact Total',
+    'Combined Score', 'Pitch', 'Date'
+  ];
+
+  const rows = [];
+  submissions.forEach(s => {
+    (s.ideas || []).forEach(idea => {
+      rows.push([
+        s.groupName, s.department, (s.members || []).join('; '),
+        idea.name, idea.problemDescription, idea.whoAffected, idea.frequency, idea.timePerCycle,
+        idea.aiApproach, idea.dataAvailable, idea.successCriteria,
+        idea.feasibility?.dataReadiness, idea.feasibility?.technicalComplexity, idea.feasibility?.orgReadiness, idea.feasibility?.total,
+        idea.impact?.timeSaved, idea.impact?.errorReduction, idea.impact?.strategicValue, idea.impact?.total,
+        idea.combinedScore, idea.pitch,
+        s.createdAt ? new Date(s.createdAt.seconds * 1000).toLocaleDateString('en-GB') : ''
+      ]);
+    });
+  });
+
+  const csv = [headers, ...rows].map(row => row.map(csvEscape).join(',')).join('\n');
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `AI-UseCases_${sessionName.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // =====================

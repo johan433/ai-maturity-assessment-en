@@ -22,5 +22,9 @@ service cloud.firestore {
     match /maturity_responses_en/{document=**} {
       allow read, write: if true;
     }
+    // AI Use Case Discovery (English) collection
+    match /usecase_submissions_en/{document=**} {
+      allow read, write: if true;
+    }
   }
 }
