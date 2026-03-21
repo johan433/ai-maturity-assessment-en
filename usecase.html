@@ -23,8 +23,20 @@
       <a href="admin.html">Admin</a>
     </nav>
 
+    <!-- Step 0: Select or Create Group -->
+    <div id="step-select-group" class="hidden">
+      <div class="card card-accent">
+        <div class="card-header">Select Your Group</div>
+        <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
+          Choose your group to continue adding ideas, or start a new group.
+        </p>
+        <div id="existingGroupsList"></div>
+        <button class="btn btn-primary btn-full" onclick="startNewGroup()" style="margin-top:16px;">+ Start New Group</button>
+      </div>
+    </div>
+
     <!-- Step 1: Group Info -->
-    <div id="step-group">
+    <div id="step-group" class="hidden">
       <div class="card card-accent">
         <div class="card-header">Group Information</div>
         <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:16px;">
@@ -50,10 +62,11 @@
         </div>
         <div id="groupError" class="message message-error"></div>
         <button class="btn btn-primary btn-full" onclick="startDiscovery()">Continue</button>
+        <button class="btn btn-outline btn-full mt-8" onclick="goBackToSelect()" id="backToSelectBtn" style="display:none;">Back to Group Selection</button>
       </div>
     </div>
 
-    <!-- Step 2: Guiding Questions (collapsible) + Ideas -->
+    <!-- Step 2: Ideas -->
     <div id="step-ideas" class="hidden">
 
       <!-- Guiding Questions -->
@@ -108,8 +121,8 @@
         </div>
       </div>
 
-      <!-- Previously Submitted Ideas (shown when returning) -->
-      <div id="existingIdeasSummary" class="hidden"></div>
+      <!-- Saved Ideas Panel -->
+      <div id="savedIdeasPanel" class="hidden"></div>
 
       <!-- Ideas Container -->
       <div id="ideasContainer"></div>
@@ -119,24 +132,9 @@
         <button class="btn btn-outline" onclick="addIdea()" id="addIdeaBtn">+ Add Another Idea</button>
       </div>
 
-      <!-- Submit -->
-      <div id="submitError" class="message message-error"></div>
+      <!-- Back -->
       <div style="display:flex;gap:12px;margin-top:16px;">
         <button class="btn btn-outline" onclick="goBackToGroup()">Back</button>
-        <button class="btn btn-primary" style="flex:1" onclick="submitAll()">Submit All Ideas</button>
-      </div>
-    </div>
-
-    <!-- Step 3: Completion -->
-    <div id="step-complete" class="hidden">
-      <div class="completion">
-        <div class="checkmark">&#10004;&#65039;</div>
-        <h2>Ideas Submitted!</h2>
-        <p style="color:var(--text-secondary);margin-bottom:8px;">Your AI use case ideas have been successfully captured.</p>
-        <div id="completionSummary" style="margin:24px 0;"></div>
-        <div id="completionActions" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
-          <a href="index.html" class="btn btn-outline">Back to Home</a>
-        </div>
       </div>
     </div>
 
@@ -153,7 +151,9 @@
     let sessionData = null;
     let ideaCount = 0;
     let existingSubmissionId = '';
-    let existingIdeas = [];
+    let savedIdeas = [];
+    let existingGroups = [];
+    let dot_data = {};
 
     /* ---- Init ---- */
     (async function init() {
@@ -166,19 +166,17 @@
         if (!sessionData) { alert('Session not found.'); window.location.href = 'index.html'; return; }
         document.getElementById('sessionLabel').textContent = `${sessionData.organisation} — ${sessionData.name}`;
 
-        // Check if returning to an existing group
-        const groupId = getUrlParam('group');
-        if (groupId) {
-          try {
-            const submission = await getUseCaseSubmission(groupId);
-            if (submission && submission.sessionCode === sessionCode) {
-              existingSubmissionId = groupId;
-              existingIdeas = submission.ideas || [];
-              loadExistingGroup(submission);
-            }
-          } catch (e) {
-            console.warn('Could not load existing group:', e);
-          }
+        // Load existing groups for this session
+        try {
+          existingGroups = await getUseCaseSubmissions(sessionCode);
+        } catch (e) {
+          existingGroups = [];
+        }
+
+        if (existingGroups.length > 0) {
+          showGroupSelection();
+        } else {
+          showNewGroupForm();
         }
       } catch (err) {
         alert('Error: ' + err.message);
@@ -186,7 +184,30 @@
       }
     })();
 
-    function loadExistingGroup(submission) {
+    /* ---- Group Selection ---- */
+    function showGroupSelection() {
+      document.getElementById('step-select-group').classList.remove('hidden');
+      const list = document.getElementById('existingGroupsList');
+      list.innerHTML = existingGroups.map(g => `
+        <div class="session-row" style="cursor:pointer;margin-bottom:8px;" onclick="selectExistingGroup('${g.id}')">
+          <div class="session-info">
+            <div class="session-name" style="font-weight:600;color:var(--blue);">${g.groupName}</div>
+            <div class="session-meta">
+              ${g.department ? g.department + ' · ' : ''}${(g.members || []).length} members · ${(g.ideas || []).length} idea(s)
+            </div>
+          </div>
+          <div style="color:var(--blue);font-size:1.2rem;">&#8594;</div>
+        </div>
+      `).join('');
+    }
+
+    async function selectExistingGroup(docId) {
+      const submission = existingGroups.find(g => g.id === docId);
+      if (!submission) return;
+
+      existingSubmissionId = docId;
+      savedIdeas = submission.ideas || [];
+
       // Pre-fill group info
       document.getElementById('groupName').value = submission.groupName || '';
       document.getElementById('department').value = submission.department || '';
@@ -204,17 +225,28 @@
         `;
         container.appendChild(row);
       });
-      if (members.length === 0) {
-        addMember();
-      }
+      if (members.length === 0) addMember();
 
-      // Show returning banner
-      const banner = document.createElement('div');
-      banner.className = 'message message-info';
-      banner.style.display = 'block';
-      banner.innerHTML = `Welcome back, <strong>${submission.groupName}</strong>! You have <strong>${existingIdeas.length}</strong> idea(s) already submitted. Add more below.`;
-      const card = document.querySelector('#step-group .card');
-      card.insertBefore(banner, card.querySelector('.form-group'));
+      // Skip group form, go straight to ideas
+      document.getElementById('step-select-group').classList.add('hidden');
+      document.getElementById('step-ideas').classList.remove('hidden');
+      updateSavedIdeasPanel();
+      if (ideaCount === 0) addIdea();
+    }
+
+    function startNewGroup() {
+      document.getElementById('step-select-group').classList.add('hidden');
+      showNewGroupForm();
+      document.getElementById('backToSelectBtn').style.display = '';
+    }
+
+    function showNewGroupForm() {
+      document.getElementById('step-group').classList.remove('hidden');
+    }
+
+    function goBackToSelect() {
+      document.getElementById('step-group').classList.add('hidden');
+      document.getElementById('step-select-group').classList.remove('hidden');
     }
 
     /* ---- Members ---- */
@@ -240,7 +272,6 @@
     /* ---- Step Navigation ---- */
     function startDiscovery() {
       const groupName = document.getElementById('groupName').value.trim();
-      const department = document.getElementById('department').value.trim();
       const members = getMembers();
 
       if (!groupName || members.length === 0) {
@@ -251,31 +282,7 @@
       document.getElementById('step-group').classList.add('hidden');
       document.getElementById('step-ideas').classList.remove('hidden');
 
-      // Show existing ideas summary if returning
-      if (existingIdeas.length > 0) {
-        const summary = document.getElementById('existingIdeasSummary');
-        summary.classList.remove('hidden');
-        summary.innerHTML = `
-          <div class="card card-blue">
-            <div class="card-header" style="margin-bottom:12px;">Previously Submitted Ideas (${existingIdeas.length})</div>
-            ${existingIdeas.map((idea, i) => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.08);border-radius:8px;margin-bottom:6px;">
-                <div>
-                  <strong style="color:var(--text);">${idea.name}</strong>
-                  <span style="color:var(--text-secondary);font-size:0.85rem;margin-left:8px;">${idea.problemDescription ? idea.problemDescription.substring(0, 60) + '...' : ''}</span>
-                </div>
-                <div class="idea-scores" style="flex-shrink:0;">
-                  <span class="idea-score-badge feasibility">F: ${idea.feasibility?.total || 0}/15</span>
-                  <span class="idea-score-badge impact">I: ${idea.impact?.total || 0}/15</span>
-                  <span class="idea-score-badge combined">${idea.combinedScore || 0}/30</span>
-                </div>
-              </div>
-            `).join('')}
-            <p style="font-size:0.85rem;color:var(--text-secondary);margin-top:12px;">Add new ideas below. They will be added to your existing submission.</p>
-          </div>
-        `;
-      }
-
+      updateSavedIdeasPanel();
       if (ideaCount === 0) addIdea();
     }
 
@@ -298,6 +305,34 @@
       toggle.style.transform = content.classList.contains('hidden') ? '' : 'rotate(180deg)';
     }
 
+    /* ---- Saved Ideas Panel ---- */
+    function updateSavedIdeasPanel() {
+      const panel = document.getElementById('savedIdeasPanel');
+      if (savedIdeas.length === 0) {
+        panel.classList.add('hidden');
+        return;
+      }
+      panel.classList.remove('hidden');
+      panel.innerHTML = `
+        <div class="card card-blue">
+          <div class="card-header" style="margin-bottom:12px;">Saved Ideas (${savedIdeas.length})</div>
+          ${savedIdeas.map((idea, i) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:rgba(255,255,255,0.08);border-radius:8px;margin-bottom:6px;">
+              <div>
+                <strong style="color:var(--text);">${idea.name}</strong>
+                <span style="color:var(--text-secondary);font-size:0.85rem;margin-left:8px;">${idea.problemDescription ? idea.problemDescription.substring(0, 60) + (idea.problemDescription.length > 60 ? '...' : '') : ''}</span>
+              </div>
+              <div class="idea-scores" style="flex-shrink:0;">
+                <span class="idea-score-badge feasibility">F: ${idea.feasibility?.total || 0}/15</span>
+                <span class="idea-score-badge impact">I: ${idea.impact?.total || 0}/15</span>
+                <span class="idea-score-badge combined">${idea.combinedScore || 0}/30</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
     /* ---- Idea Management ---- */
     function addIdea() {
       ideaCount++;
@@ -309,8 +344,8 @@
       ideaDiv.id = `idea_${n}`;
       ideaDiv.innerHTML = `
         <div class="idea-header">
-          <div class="idea-number">Idea #${n}</div>
-          ${n > 1 ? `<button class="btn-icon danger" onclick="removeIdea(${n})" title="Remove idea">&times;</button>` : ''}
+          <div class="idea-number">Idea #${savedIdeas.length + n}</div>
+          ${ideaCount > 1 ? `<button class="btn-icon danger" onclick="removeIdea(${n})" title="Remove idea">&times;</button>` : ''}
         </div>
 
         <div class="form-group">
@@ -354,7 +389,7 @@
               </select>
             </div>
             <div class="form-group" style="flex:1">
-              <label>Time per cycle?</label>
+              <label>How long does this take?</label>
               <input type="text" id="idea_time_${n}" placeholder="e.g. 2 hours, 30 min">
             </div>
           </div>
@@ -458,6 +493,12 @@
             <input type="text" id="idea_pitch_outcome_${n}" placeholder="business outcome" class="pitch-input" style="min-width:200px;">
           </div>
         </div>
+
+        <!-- Save Button -->
+        <div id="idea_save_area_${n}" style="text-align:right;margin-top:16px;">
+          <div id="idea_save_error_${n}" class="message message-error" style="text-align:left;"></div>
+          <button class="btn btn-primary" onclick="saveIdea(${n})">Save Idea</button>
+        </div>
       `;
 
       container.appendChild(ideaDiv);
@@ -483,13 +524,10 @@
       container.querySelectorAll('.score-dot').forEach(dot => {
         dot.classList.toggle('active', parseInt(dot.dataset.val) <= val);
       });
-      dot_data = dot_data || {};
       if (!dot_data[ideaNum]) dot_data[ideaNum] = {};
       dot_data[ideaNum][field] = val;
       updateTotals(ideaNum);
     }
-
-    let dot_data = {};
 
     function updateTotals(n) {
       const d = dot_data[n] || {};
@@ -540,62 +578,79 @@
       el.classList.toggle('selected');
     }
 
-    /* ---- Collect Idea Data ---- */
-    function collectIdeas() {
-      const ideaBlocks = document.querySelectorAll('.idea-block');
-      const ideas = [];
-      const unnamed = [];
+    /* ---- Collect Single Idea ---- */
+    function collectSingleIdea(n) {
+      const block = document.getElementById(`idea_${n}`);
+      if (!block) return null;
 
-      ideaBlocks.forEach((block, blockIdx) => {
-        const n = block.id.replace('idea_', '');
-        const name = val(`idea_name_${n}`);
+      const name = val(`idea_name_${n}`);
+      const hasContent = name ||
+        val(`idea_problem_${n}`) ||
+        val(`idea_affected_${n}`) ||
+        val(`idea_ai_${n}`) ||
+        (dot_data[n] && Object.keys(dot_data[n]).length > 0);
 
-        // Check if this idea has ANY content filled in
-        const hasContent = name ||
-          val(`idea_problem_${n}`) ||
-          val(`idea_affected_${n}`) ||
-          val(`idea_ai_${n}`) ||
-          (dot_data[n] && Object.keys(dot_data[n]).length > 0);
+      if (!hasContent) return null;
 
-        if (!hasContent) return; // truly empty idea, skip
+      const approaches = [];
+      block.querySelectorAll('.approach-tag.selected').forEach(tag => approaches.push(tag.textContent.trim()));
 
-        if (!name) {
-          unnamed.push(blockIdx + 1);
-        }
+      const pitchRole = val(`idea_pitch_role_${n}`);
+      const pitchCap = val(`idea_pitch_capability_${n}`);
+      const pitchOut = val(`idea_pitch_outcome_${n}`);
+      const pitch = (pitchRole && pitchCap && pitchOut)
+        ? `As a ${pitchRole}, I need ${pitchCap} so that ${pitchOut}.`
+        : '';
 
-        const approaches = [];
-        block.querySelectorAll('.approach-tag.selected').forEach(tag => approaches.push(tag.textContent.trim()));
+      const scores = dot_data[n] || {};
 
-        const pitchRole = val(`idea_pitch_role_${n}`);
-        const pitchCap = val(`idea_pitch_capability_${n}`);
-        const pitchOut = val(`idea_pitch_outcome_${n}`);
-        const pitch = (pitchRole && pitchCap && pitchOut)
-          ? `As a ${pitchRole}, I need ${pitchCap} so that ${pitchOut}.`
-          : '';
+      return {
+        name: name || `Idea ${savedIdeas.length + 1}`,
+        problemDescription: val(`idea_problem_${n}`),
+        processSteps: getProcessSteps(n),
+        whoAffected: val(`idea_affected_${n}`),
+        frequency: document.getElementById(`idea_frequency_${n}`)?.value || '',
+        timePerCycle: val(`idea_time_${n}`),
+        aiApproach: approaches.join(', ') + (val(`idea_ai_${n}`) ? ' — ' + val(`idea_ai_${n}`) : ''),
+        dataAvailable: val(`idea_data_${n}`),
+        successCriteria: val(`idea_success_${n}`),
+        dataReadiness: scores.dataReadiness || 0,
+        technicalComplexity: scores.technicalComplexity || 0,
+        orgReadiness: scores.orgReadiness || 0,
+        timeSaved: scores.timeSaved || 0,
+        errorReduction: scores.errorReduction || 0,
+        strategicValue: scores.strategicValue || 0,
+        pitch
+      };
+    }
 
-        const scores = dot_data[n] || {};
-
-        ideas.push({
-          name: name || `Idea ${blockIdx + 1}`,
-          problemDescription: val(`idea_problem_${n}`),
-          processSteps: getProcessSteps(n),
-          whoAffected: val(`idea_affected_${n}`),
-          frequency: document.getElementById(`idea_frequency_${n}`)?.value || '',
-          timePerCycle: val(`idea_time_${n}`),
-          aiApproach: approaches.join(', ') + (val(`idea_ai_${n}`) ? ' — ' + val(`idea_ai_${n}`) : ''),
-          dataAvailable: val(`idea_data_${n}`),
-          successCriteria: val(`idea_success_${n}`),
-          dataReadiness: scores.dataReadiness || 0,
-          technicalComplexity: scores.technicalComplexity || 0,
-          orgReadiness: scores.orgReadiness || 0,
-          timeSaved: scores.timeSaved || 0,
-          errorReduction: scores.errorReduction || 0,
-          strategicValue: scores.strategicValue || 0,
-          pitch
-        });
-      });
-
-      return { ideas, unnamed };
+    function formatIdeaForFirestore(idea) {
+      return {
+        name: idea.name,
+        problemDescription: idea.problemDescription,
+        processSteps: idea.processSteps || [],
+        whoAffected: idea.whoAffected,
+        frequency: idea.frequency,
+        timePerCycle: idea.timePerCycle,
+        aiApproach: idea.aiApproach,
+        dataAvailable: idea.dataAvailable,
+        successCriteria: idea.successCriteria,
+        feasibility: {
+          dataReadiness: Number(idea.dataReadiness) || 0,
+          technicalComplexity: Number(idea.technicalComplexity) || 0,
+          orgReadiness: Number(idea.orgReadiness) || 0,
+          total: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0)
+        },
+        impact: {
+          timeSaved: Number(idea.timeSaved) || 0,
+          errorReduction: Number(idea.errorReduction) || 0,
+          strategicValue: Number(idea.strategicValue) || 0,
+          total: (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0)
+        },
+        combinedScore: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0) +
+                        (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0),
+        pitch: idea.pitch
+      };
     }
 
     function val(id) {
@@ -603,18 +658,21 @@
       return el ? el.value.trim() : '';
     }
 
-    /* ---- Submit ---- */
-    async function submitAll() {
-      const { ideas, unnamed } = collectIdeas();
+    /* ---- Save Single Idea ---- */
+    async function saveIdea(n) {
+      const idea = collectSingleIdea(n);
+      const errorId = `idea_save_error_${n}`;
 
-      if (ideas.length === 0) {
-        showError('submitError', 'Please fill in at least one idea.');
+      if (!idea) {
+        showError(errorId, 'Please fill in at least some content for this idea.');
         return;
       }
-
-      if (unnamed.length > 0) {
-        showError('submitError', `Please give a name/title to idea(s): ${unnamed.join(', ')}`);
-        return;
+      if (!idea.name || idea.name.startsWith('Idea ')) {
+        const rawName = val(`idea_name_${n}`);
+        if (!rawName) {
+          showError(errorId, 'Please give this idea a name/title before saving.');
+          return;
+        }
       }
 
       const groupInfo = {
@@ -623,108 +681,54 @@
         members: getMembers()
       };
 
+      const formatted = formatIdeaForFirestore(idea);
+
       try {
-        let docId;
-        if (existingSubmissionId) {
-          // Append to existing submission
-          const formattedIdeas = ideas.map(idea => ({
-            name: idea.name,
-            problemDescription: idea.problemDescription,
-            processSteps: idea.processSteps || [],
-            whoAffected: idea.whoAffected,
-            frequency: idea.frequency,
-            timePerCycle: idea.timePerCycle,
-            aiApproach: idea.aiApproach,
-            dataAvailable: idea.dataAvailable,
-            successCriteria: idea.successCriteria,
-            feasibility: {
-              dataReadiness: Number(idea.dataReadiness) || 0,
-              technicalComplexity: Number(idea.technicalComplexity) || 0,
-              orgReadiness: Number(idea.orgReadiness) || 0,
-              total: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0)
-            },
-            impact: {
-              timeSaved: Number(idea.timeSaved) || 0,
-              errorReduction: Number(idea.errorReduction) || 0,
-              strategicValue: Number(idea.strategicValue) || 0,
-              total: (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0)
-            },
-            combinedScore: (Number(idea.dataReadiness) || 0) + (Number(idea.technicalComplexity) || 0) + (Number(idea.orgReadiness) || 0) +
-                            (Number(idea.timeSaved) || 0) + (Number(idea.errorReduction) || 0) + (Number(idea.strategicValue) || 0),
-            pitch: idea.pitch
-          }));
-          const totalCount = await appendUseCaseIdeas(existingSubmissionId, formattedIdeas);
-          docId = existingSubmissionId;
+        // Disable save button while saving
+        const saveArea = document.getElementById(`idea_save_area_${n}`);
+        const saveBtn = saveArea.querySelector('button');
+        saveBtn.textContent = 'Saving...';
+        saveBtn.disabled = true;
+
+        if (!existingSubmissionId) {
+          // First idea — create the Firestore document
+          existingSubmissionId = await submitUseCases(sessionCode, groupInfo, [idea]);
         } else {
-          docId = await submitUseCases(sessionCode, groupInfo, ideas);
+          // Append to existing document
+          await appendUseCaseIdeas(existingSubmissionId, [formatted]);
         }
-        showCompletion(ideas, docId);
+
+        // Add to local saved list
+        savedIdeas.push(formatted);
+        updateSavedIdeasPanel();
+
+        // Mark idea card as saved
+        const ideaBlock = document.getElementById(`idea_${n}`);
+        ideaBlock.querySelectorAll('input, textarea, select').forEach(el => el.disabled = true);
+        ideaBlock.querySelectorAll('.approach-tag').forEach(el => el.style.pointerEvents = 'none');
+        ideaBlock.querySelectorAll('.score-dot').forEach(el => el.style.pointerEvents = 'none');
+        ideaBlock.querySelectorAll('.btn').forEach(el => { el.disabled = true; el.style.opacity = '0.5'; });
+
+        saveArea.innerHTML = `
+          <div class="message message-success" style="display:block;">
+            <strong>Saved!</strong> "${idea.name}" has been saved successfully.
+          </div>
+        `;
+
+        // Scroll to the saved ideas panel briefly
+        document.getElementById('savedIdeasPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
       } catch (err) {
-        showError('submitError', 'Error submitting: ' + err.message);
+        showError(errorId, 'Error saving: ' + err.message);
+        const saveBtn = document.querySelector(`#idea_save_area_${n} button`);
+        if (saveBtn) { saveBtn.textContent = 'Save Idea'; saveBtn.disabled = false; }
       }
-    }
-
-    function showCompletion(ideas, docId) {
-      document.getElementById('step-ideas').classList.add('hidden');
-      document.getElementById('step-complete').classList.remove('hidden');
-
-      const totalNew = ideas.length;
-      const totalAll = existingIdeas.length + totalNew;
-      const returnUrl = `${window.location.origin}${window.location.pathname}?session=${sessionCode}&group=${docId}`;
-
-      document.getElementById('completionSummary').innerHTML = `
-        <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap;">
-          <div class="score-card" style="min-width:120px;">
-            <div class="score-value">${totalNew}</div>
-            <div class="score-label">New Ideas</div>
-          </div>
-          <div class="score-card" style="min-width:120px;">
-            <div class="score-value">${totalAll}</div>
-            <div class="score-label">Total Ideas</div>
-          </div>
-        </div>
-        <div style="margin-top:16px;">
-          <h3 style="font-size:1rem;margin-bottom:8px;">Ideas Captured:</h3>
-          ${ideas.map((idea, i) => `
-            <div style="background:var(--bg);padding:10px 16px;border-radius:8px;margin-bottom:6px;text-align:left;">
-              <strong>Idea ${existingIdeas.length + i + 1}:</strong> ${idea.name}
-              <span style="float:right;color:var(--blue);font-weight:600;">${
-                (idea.dataReadiness || 0) + (idea.technicalComplexity || 0) + (idea.orgReadiness || 0) +
-                (idea.timeSaved || 0) + (idea.errorReduction || 0) + (idea.strategicValue || 0)
-              }/30</span>
-            </div>
-          `).join('')}
-        </div>
-        <div class="card card-blue" style="margin-top:20px;text-align:left;">
-          <div class="card-header" style="margin-bottom:8px;">Return Link</div>
-          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:12px;">
-            Bookmark or share this link with your group to come back and add more ideas later.
-          </p>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input type="text" id="returnLink" value="${returnUrl}" readonly
-              style="flex:1;font-size:0.8rem;background:var(--bg);cursor:text;">
-            <button class="btn btn-blue" style="flex-shrink:0;" onclick="copyReturnLink()">Copy Link</button>
-          </div>
-          <div id="copyReturnMsg" class="message message-success" style="margin-top:8px;"></div>
-        </div>
-      `;
-    }
-
-    function copyReturnLink() {
-      const input = document.getElementById('returnLink');
-      navigator.clipboard.writeText(input.value).then(() => {
-        const msg = document.getElementById('copyReturnMsg');
-        msg.textContent = 'Link copied to clipboard!';
-        msg.style.display = 'block';
-        setTimeout(() => msg.style.display = 'none', 3000);
-      }).catch(() => {
-        input.select();
-      });
     }
 
     /* ---- Helpers ---- */
     function showError(id, msg) {
       const el = document.getElementById(id);
+      if (!el) return;
       el.textContent = msg;
       el.style.display = 'block';
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
