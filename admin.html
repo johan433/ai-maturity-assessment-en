@@ -102,9 +102,13 @@
             .where('sessionCode', '==', s.code).get();
           maturityCounts[s.code] = matSnap.size;
 
-          const ucSnap = await db.collection(USECASE_SUBMISSIONS_COLLECTION)
-            .where('sessionCode', '==', s.code).get();
-          usecaseCounts[s.code] = ucSnap.size;
+          try {
+            const ucSnap = await db.collection(USECASE_SUBMISSIONS_COLLECTION)
+              .where('sessionCode', '==', s.code).get();
+            usecaseCounts[s.code] = ucSnap.size;
+          } catch (e) {
+            usecaseCounts[s.code] = 0;
+          }
         }
 
         container.innerHTML = sessions.map(s => {
